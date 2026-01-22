@@ -1,7 +1,6 @@
 #include "gdpdu_importer.hpp"
 #include "gdpdu_parser.hpp"
 #include "gdpdu_table_creator.hpp"
-#include "gdpdu_data_parser.hpp"
 #include <sstream>
 #include <algorithm>
 
@@ -26,8 +25,8 @@ static std::string join_path(const std::string& dir, const std::string& file) {
     return norm_dir + "/" + file;
 }
 
-// Escape single quotes for SQL
-static std::string escape_sql_string(const std::string& value) {
+// Escape single quotes for SQL string literals
+static std::string escape_sql(const std::string& value) {
     std::string result;
     result.reserve(value.size() + 10);
     for (char c : value) {
@@ -40,64 +39,46 @@ static std::string escape_sql_string(const std::string& value) {
     return result;
 }
 
-// Format a value for SQL INSERT based on column type
-static std::string format_sql_value(const std::string& value, const ColumnDef& col) {
-    if (value.empty()) {
-        return "NULL";
+// Build column list for INSERT
+static std::string build_column_list(const TableDef& table) {
+    std::ostringstream ss;
+    for (size_t i = 0; i < table.columns.size(); ++i) {
+        if (i > 0) ss << ", ";
+        ss << "\"" << table.columns[i].name << "\"";
     }
-    
-    switch (col.type) {
-        case GdpduType::Numeric:
-            // Numeric values don't need quotes
-            return value;
-        case GdpduType::Date:
-            // Date values need quotes
-            return "'" + escape_sql_string(value) + "'";
-        case GdpduType::AlphaNumeric:
-        default:
-            // String values need quotes
-            return "'" + escape_sql_string(value) + "'";
-    }
+    return ss.str();
 }
 
-// Insert rows into table using batch INSERT statements
-static void insert_rows(Connection& conn, const TableDef& table, const std::vector<ParsedRow>& rows) {
-    if (rows.empty()) {
-        return;
-    }
-    
-    const size_t BATCH_SIZE = 1000;
-    
-    for (size_t batch_start = 0; batch_start < rows.size(); batch_start += BATCH_SIZE) {
-        size_t batch_end = std::min(batch_start + BATCH_SIZE, rows.size());
+// Build SELECT clause with type conversions for read_csv
+static std::string build_select_clause(const TableDef& table) {
+    std::ostringstream ss;
+    for (size_t i = 0; i < table.columns.size(); ++i) {
+        if (i > 0) ss << ", ";
         
-        std::ostringstream sql;
-        sql << "INSERT INTO \"" << table.name << "\" VALUES ";
+        std::string col_ref = "column" + std::to_string(i);
+        const auto& col = table.columns[i];
         
-        bool first_row = true;
-        for (size_t i = batch_start; i < batch_end; ++i) {
-            const auto& row = rows[i];
-            
-            if (!first_row) {
-                sql << ", ";
-            }
-            first_row = false;
-            
-            sql << "(";
-            for (size_t j = 0; j < row.size() && j < table.columns.size(); ++j) {
-                if (j > 0) {
-                    sql << ", ";
+        switch (col.type) {
+            case GdpduType::Numeric:
+                if (col.precision > 0) {
+                    // Decimal: replace German comma with dot, remove grouping dots
+                    ss << "CAST(REPLACE(REPLACE(" << col_ref << ", '.', ''), ',', '.') AS DECIMAL(18," << col.precision << "))";
+                } else {
+                    // Integer: remove grouping dots
+                    ss << "CAST(REPLACE(" << col_ref << ", '.', '') AS BIGINT)";
                 }
-                sql << format_sql_value(row[j], table.columns[j]);
-            }
-            sql << ")";
-        }
-        
-        auto result = conn.Query(sql.str());
-        if (result->HasError()) {
-            throw std::runtime_error(result->GetError());
+                break;
+            case GdpduType::Date:
+                // German date DD.MM.YYYY -> DATE (handle empty/whitespace values)
+                ss << "CASE WHEN " << col_ref << " IS NULL OR TRIM(" << col_ref << ") = '' THEN NULL ELSE strptime(TRIM(" << col_ref << "), '%d.%m.%Y')::DATE END";
+                break;
+            case GdpduType::AlphaNumeric:
+            default:
+                ss << col_ref;
+                break;
         }
     }
+    return ss.str();
 }
 
 std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& directory_path) {
@@ -119,7 +100,7 @@ std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& dire
     // Step 2: Create tables
     auto create_results = create_tables(conn, schema);
     
-    // Step 3: For each table, load data
+    // Step 3: For each table, load data using DuckDB's native CSV reader
     for (size_t i = 0; i < schema.tables.size(); ++i) {
         const auto& table = schema.tables[i];
         ImportResult result;
@@ -136,25 +117,44 @@ std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& dire
         // Build data file path
         std::string data_path = join_path(directory_path, table.url);
         
-        // Parse data file
-        DataParseResult parse_result;
-        auto rows = GdpduDataParser::parse_file(data_path, table, parse_result);
+        // Use DuckDB's native read_csv with:
+        // - semicolon delimiter
+        // - no header (GDPdU files don't have headers)
+        // - all columns as VARCHAR (we convert types in SELECT)
+        // - quote handling
+        std::ostringstream sql;
+        sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
+        sql << "SELECT " << build_select_clause(table) << " ";
+        sql << "FROM read_csv('" << escape_sql(data_path) << "', ";
+        sql << "delim=';', ";
+        sql << "header=false, ";
+        sql << "quote='\"', ";
+        sql << "all_varchar=true, ";
+        sql << "columns={";
         
-        if (!parse_result.success) {
-            result.row_count = 0;
-            result.status = "Parse failed: " + parse_result.error_message;
-            results.push_back(result);
-            continue;
+        // Define expected columns
+        for (size_t j = 0; j < table.columns.size(); ++j) {
+            if (j > 0) sql << ", ";
+            sql << "'column" << j << "': 'VARCHAR'";
         }
+        sql << "})";
         
-        // Insert rows into table
         try {
-            insert_rows(conn, table, rows);
-            result.row_count = static_cast<int64_t>(rows.size());
-            result.status = "OK";
+            auto query_result = conn.Query(sql.str());
+            if (query_result->HasError()) {
+                result.row_count = 0;
+                result.status = "Load failed: " + query_result->GetError();
+            } else {
+                // Get row count
+                auto count_result = conn.Query("SELECT COUNT(*) FROM \"" + table.name + "\"");
+                if (!count_result->HasError() && count_result->RowCount() > 0) {
+                    result.row_count = count_result->GetValue(0, 0).GetValue<int64_t>();
+                }
+                result.status = "OK";
+            }
         } catch (const std::exception& e) {
             result.row_count = 0;
-            result.status = std::string("Insert failed: ") + e.what();
+            result.status = std::string("Load failed: ") + e.what();
         }
         
         results.push_back(result);
