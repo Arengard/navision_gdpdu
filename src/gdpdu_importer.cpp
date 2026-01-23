@@ -81,13 +81,13 @@ static std::string build_select_clause(const TableDef& table) {
     return ss.str();
 }
 
-std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& directory_path) {
+std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& directory_path, const std::string& column_name_field) {
     std::vector<ImportResult> results;
     
     // Step 1: Parse index.xml
     GdpduSchema schema;
     try {
-        schema = parse_index_xml(directory_path);
+        schema = parse_index_xml(directory_path, column_name_field);
     } catch (const std::exception& e) {
         ImportResult r;
         r.table_name = "(schema)";
@@ -120,8 +120,7 @@ std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& dire
         // Use DuckDB's native read_csv with:
         // - semicolon delimiter
         // - no header (GDPdU files don't have headers)
-        // - all columns as VARCHAR (we convert types in SELECT)
-        // - quote handling
+        // - explicit column definitions as VARCHAR
         std::ostringstream sql;
         sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
         sql << "SELECT " << build_select_clause(table) << " ";
@@ -132,7 +131,7 @@ std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& dire
         sql << "all_varchar=true, ";
         sql << "columns={";
         
-        // Define expected columns
+        // Define expected columns with explicit names
         for (size_t j = 0; j < table.columns.size(); ++j) {
             if (j > 0) sql << ", ";
             sql << "'column" << j << "': 'VARCHAR'";

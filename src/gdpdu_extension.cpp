@@ -5,15 +5,17 @@
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/function/function_set.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 
 #include <iostream>
 
 namespace duckdb {
 
-// Bind data: stores the directory path argument
+// Bind data: stores the directory path and column name field argument
 struct GdpduImportBindData : public TableFunctionData {
     std::string directory_path;
+    std::string column_name_field;
 };
 
 // Global state: stores import results and current position
@@ -34,8 +36,15 @@ static unique_ptr<FunctionData> GdpduImportBind(
 ) {
     auto bind_data = make_uniq<GdpduImportBindData>();
     
-    // Get directory path argument
+    // Get directory path argument (required)
     bind_data->directory_path = input.inputs[0].GetValue<string>();
+    
+    // Get column_name_field argument (optional, defaults to "Name")
+    if (input.inputs.size() > 1 && !input.inputs[1].IsNull()) {
+        bind_data->column_name_field = input.inputs[1].GetValue<string>();
+    } else {
+        bind_data->column_name_field = "Name";
+    }
     
     // Define return columns
     return_types.push_back(LogicalType::VARCHAR);  // table_name
@@ -64,7 +73,7 @@ static unique_ptr<GlobalTableFunctionState> GdpduImportInit(
     auto &db = DatabaseInstance::GetDatabase(context);
     Connection conn(db);
     
-    state->results = import_gdpdu(conn, bind_data.directory_path);
+    state->results = import_gdpdu(conn, bind_data.directory_path, bind_data.column_name_field);
     state->current_row = 0;
     state->done = state->results.empty();
     
@@ -112,16 +121,32 @@ DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
     // Set extension description
     loader.SetDescription("Import GDPdU (German tax audit) exports into DuckDB");
     
-    // Create and register table function
-    duckdb::TableFunction gdpdu_import(
+    // Create table function set to support both:
+    // - gdpdu_import('path')                           -> uses "Name" for column names
+    // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
+    duckdb::TableFunctionSet gdpdu_import_set("gdpdu_import");
+    
+    // Single argument version (directory_path only)
+    duckdb::TableFunction gdpdu_import_1arg(
         "gdpdu_import",
         {duckdb::LogicalType::VARCHAR},
         duckdb::GdpduImportScan,
         duckdb::GdpduImportBind,
         duckdb::GdpduImportInit
     );
+    gdpdu_import_set.AddFunction(gdpdu_import_1arg);
     
-    loader.RegisterFunction(gdpdu_import);
+    // Two argument version (directory_path, column_name_field)
+    duckdb::TableFunction gdpdu_import_2args(
+        "gdpdu_import",
+        {duckdb::LogicalType::VARCHAR, duckdb::LogicalType::VARCHAR},
+        duckdb::GdpduImportScan,
+        duckdb::GdpduImportBind,
+        duckdb::GdpduImportInit
+    );
+    gdpdu_import_set.AddFunction(gdpdu_import_2args);
+    
+    loader.RegisterFunction(gdpdu_import_set);
     
     std::cout << "GDPdU extension loaded successfully!" << std::endl;
 }

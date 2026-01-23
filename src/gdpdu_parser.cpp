@@ -3,8 +3,122 @@
 #include <pugixml.hpp>
 #include <stdexcept>
 #include <algorithm>
+#include <cctype>
 
 namespace duckdb {
+
+// Convert a string to snake_case
+// Handles both:
+// - PascalCase/camelCase: "EUCountryRegionCode" -> "eu_country_region_code"
+// - German descriptions: "EU-Laender-/Regionscode" -> "eu_laender_regionscode"
+// - German umlauts: ä->a, ö->o, ü->u, ß->ss
+static std::string to_snake_case(const std::string& input) {
+    if (input.empty()) {
+        return input;
+    }
+    
+    std::string result;
+    result.reserve(input.size() * 2);
+    
+    bool prev_was_lower = false;
+    bool prev_was_upper = false;
+    bool prev_was_underscore = true;  // Start as true to avoid leading underscore
+    
+    for (size_t i = 0; i < input.size(); ++i) {
+        unsigned char c = static_cast<unsigned char>(input[i]);
+        
+        // Handle German umlauts (UTF-8 encoded: 2 bytes each)
+        // ä = C3 A4, ö = C3 B6, ü = C3 BC, Ä = C3 84, Ö = C3 96, Ü = C3 9C, ß = C3 9F
+        if (c == 0xC3 && i + 1 < input.size()) {
+            unsigned char next = static_cast<unsigned char>(input[i + 1]);
+            char replacement = 0;
+            bool is_upper = false;
+            
+            switch (next) {
+                case 0xA4: replacement = 'a'; break;  // ä
+                case 0xB6: replacement = 'o'; break;  // ö
+                case 0xBC: replacement = 'u'; break;  // ü
+                case 0x84: replacement = 'a'; is_upper = true; break;  // Ä
+                case 0x96: replacement = 'o'; is_upper = true; break;  // Ö
+                case 0x9C: replacement = 'u'; is_upper = true; break;  // Ü
+                case 0x9F:  // ß -> ss
+                    if (!prev_was_underscore) {
+                        // No underscore needed before ss
+                    }
+                    result += "ss";
+                    i++;  // Skip the second byte
+                    prev_was_lower = true;
+                    prev_was_upper = false;
+                    prev_was_underscore = false;
+                    continue;
+                default:
+                    break;
+            }
+            
+            if (replacement != 0) {
+                if (is_upper && prev_was_lower && !prev_was_underscore) {
+                    result += '_';
+                }
+                result += replacement;
+                i++;  // Skip the second byte
+                prev_was_lower = !is_upper;
+                prev_was_upper = is_upper;
+                prev_was_underscore = false;
+                continue;
+            }
+        }
+        
+        // Handle ASCII letters
+        if (std::isupper(c)) {
+            // Add underscore before uppercase if preceded by lowercase
+            // or if this is not the first char of a sequence of uppercase followed by lowercase
+            if (prev_was_lower && !prev_was_underscore) {
+                result += '_';
+            }
+            // Handle sequences like "EU" in "EUCountry" -> "eu_country"
+            // Look ahead: if next char is lowercase and we had uppercase before, add underscore
+            else if (prev_was_upper && !prev_was_underscore && i + 1 < input.size()) {
+                unsigned char next_c = static_cast<unsigned char>(input[i + 1]);
+                if (std::islower(next_c)) {
+                    result += '_';
+                }
+            }
+            result += static_cast<char>(std::tolower(c));
+            prev_was_lower = false;
+            prev_was_upper = true;
+            prev_was_underscore = false;
+        }
+        else if (std::islower(c)) {
+            result += c;
+            prev_was_lower = true;
+            prev_was_upper = false;
+            prev_was_underscore = false;
+        }
+        else if (std::isdigit(c)) {
+            result += c;
+            prev_was_lower = false;
+            prev_was_upper = false;
+            prev_was_underscore = false;
+        }
+        else {
+            // Non-alphanumeric characters (-, /, space, etc.) become underscores
+            // but avoid consecutive underscores
+            if (!prev_was_underscore && !result.empty()) {
+                result += '_';
+                prev_was_underscore = true;
+            }
+            prev_was_lower = false;
+            prev_was_upper = false;
+        }
+    }
+    
+    // Remove trailing underscore if any
+    while (!result.empty() && result.back() == '_') {
+        result.pop_back();
+    }
+    
+    return result;
+}
 
 // Path helper: normalize Windows/Unix paths
 static std::string normalize_path(const std::string& path) {
@@ -28,9 +142,16 @@ static std::string join_path(const std::string& dir, const std::string& file) {
 }
 
 // Parse a single column (VariableColumn or VariablePrimaryKey)
-static ColumnDef parse_column(const pugi::xml_node& node, bool is_primary_key) {
+// column_name_field: "Name" or "Description" - which element to use for column name
+static ColumnDef parse_column(const pugi::xml_node& node, bool is_primary_key, const std::string& column_name_field) {
     ColumnDef col;
-    col.name = node.child_value("Name");
+    std::string raw_name = node.child_value(column_name_field.c_str());
+    // If the requested field is empty, fall back to "Name"
+    if (raw_name.empty() && column_name_field != "Name") {
+        raw_name = node.child_value("Name");
+    }
+    // Convert to snake_case
+    col.name = to_snake_case(raw_name);
     col.is_primary_key = is_primary_key;
     
     // Determine type by checking for type child elements
@@ -65,7 +186,8 @@ static ColumnDef parse_column(const pugi::xml_node& node, bool is_primary_key) {
 }
 
 // Parse a single table definition
-static TableDef parse_table(const pugi::xml_node& table_node) {
+// column_name_field: "Name" or "Description" - which element to use for column names
+static TableDef parse_table(const pugi::xml_node& table_node, const std::string& column_name_field) {
     TableDef table;
     
     // Extract basic metadata
@@ -103,14 +225,14 @@ static TableDef parse_table(const pugi::xml_node& table_node) {
     
     // Parse VariablePrimaryKey elements first (in document order)
     for (pugi::xml_node pk : var_length.children("VariablePrimaryKey")) {
-        ColumnDef col = parse_column(pk, true);
+        ColumnDef col = parse_column(pk, true, column_name_field);
         table.columns.push_back(col);
         table.primary_key_columns.push_back(col.name);
     }
     
     // Parse VariableColumn elements (in document order)
     for (pugi::xml_node vc : var_length.children("VariableColumn")) {
-        ColumnDef col = parse_column(vc, false);
+        ColumnDef col = parse_column(vc, false, column_name_field);
         table.columns.push_back(col);
     }
     
@@ -118,7 +240,7 @@ static TableDef parse_table(const pugi::xml_node& table_node) {
 }
 
 // Main parser function
-GdpduSchema parse_index_xml(const std::string& directory_path) {
+GdpduSchema parse_index_xml(const std::string& directory_path, const std::string& column_name_field) {
     GdpduSchema schema;
     
     // Build path to index.xml
@@ -149,7 +271,7 @@ GdpduSchema parse_index_xml(const std::string& directory_path) {
     
     // Iterate over Table elements
     for (pugi::xml_node table_node : media.children("Table")) {
-        TableDef table = parse_table(table_node);
+        TableDef table = parse_table(table_node, column_name_field);
         schema.tables.push_back(table);
     }
     
