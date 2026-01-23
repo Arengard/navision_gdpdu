@@ -6,9 +6,10 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/function_set.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/main/database.hpp"
+#include "duckdb/main/connection.hpp"
+#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
 namespace duckdb {
 
@@ -113,10 +114,9 @@ static void GdpduImportScan(
     }
 }
 
-// Internal load function
-static void LoadInternal(ExtensionLoader &loader) {
-    // Set extension description
-    loader.SetDescription("Import GDPdU (German tax audit) exports into DuckDB");
+// Internal load function - registers functions with the catalog
+static void LoadInternal(DatabaseInstance &db) {
+    Connection con(db);
     
     // Create table function set to support both:
     // - gdpdu_import('path')                           -> uses "Name" for column names
@@ -143,14 +143,23 @@ static void LoadInternal(ExtensionLoader &loader) {
     );
     gdpdu_import_set.AddFunction(gdpdu_import_2args);
     
-    loader.RegisterFunction(gdpdu_import_set);
+    // Register with the catalog
+    CreateTableFunctionInfo info(gdpdu_import_set);
+    auto &catalog = Catalog::GetSystemCatalog(db);
+    catalog.CreateTableFunction(*con.context, info);
 }
 
 } // namespace duckdb
 
-// DuckDB 1.4+ extension entry point - explicitly define the function
+// Extension entry point - uses the standard {name}_init pattern
 extern "C" {
-DUCKDB_EXTENSION_API void gdpdu_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
-    duckdb::LoadInternal(loader);
+
+DUCKDB_EXTENSION_API void gdpdu_init(duckdb::DatabaseInstance &db) {
+    duckdb::LoadInternal(db);
 }
+
+DUCKDB_EXTENSION_API const char *gdpdu_version() {
+    return duckdb::DuckDB::LibraryVersion();
+}
+
 }
