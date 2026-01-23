@@ -12,7 +12,7 @@ configure:
 
 # Release build
 release: configure
-	cmake --build build --config Release
+	cmake --build build --config Release --verbose
 
 # Debug build
 debug:
