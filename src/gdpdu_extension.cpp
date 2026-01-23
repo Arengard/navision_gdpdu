@@ -148,7 +148,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 } // namespace duckdb
 
-// DuckDB 1.4+ extension entry point - use the macro OUTSIDE extern "C"
-DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
+// DuckDB 1.4+ extension entry point - explicitly define the function
+extern "C" {
+DUCKDB_EXTENSION_API void gdpdu_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
     duckdb::LoadInternal(loader);
+}
 }
