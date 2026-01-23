@@ -18,21 +18,15 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Diagnostics (commit + source sanity)
+      - name: Diagnostics
         shell: bash
         run: |
           set -euxo pipefail
           echo "GITHUB_SHA=${GITHUB_SHA}"
           git rev-parse HEAD
           git show -1 --oneline
-          echo "--- grep for Vector::SetCardinality usage ---"
-          grep -n "SetCardinality" -n src/ai_functions.cpp || true
-          echo "--- grep for CatalogTransaction usage in search_columns_function.cpp ---"
-          grep -n "CatalogTransaction" -n src/search_columns_function.cpp || true
-          echo "--- show relevant snippet (ai_functions.cpp) ---"
-          sed -n '300,360p' src/ai_functions.cpp || true
-          echo "--- show relevant snippet (search_columns_function.cpp) ---"
-          sed -n '80,140p' src/search_columns_function.cpp || true
+          echo "--- Source files ---"
+          ls -la src/
 
       - name: Install build dependencies
         run: |
@@ -73,7 +67,7 @@ jobs:
           echo "✅ Found extension file: $EXTENSION_FILE"
 
           # Copy to dist with standard name
-          cp "$EXTENSION_FILE" dist/stps.duckdb_extension
+          cp "$EXTENSION_FILE" dist/gdpdu.duckdb_extension
 
           # Get git info for versioning
           GIT_SHA=$(git rev-parse --short HEAD)
@@ -84,7 +78,7 @@ jobs:
           cat > dist/build-info.txt << EOF
           Build Information
           =================
-          Extension: STPS DuckDB Extension
+          Extension: GDPdU DuckDB Extension
           Platform: Windows x64
           Git Branch: ${GIT_BRANCH}
           Git Commit: ${GIT_SHA}
@@ -92,12 +86,12 @@ jobs:
 
           Installation Instructions
           =========================
-          1. Download stps.duckdb_extension
+          1. Download gdpdu.duckdb_extension
           2. In DuckDB, run:
-             INSTALL './stps.duckdb_extension';
-             LOAD stps;
+             INSTALL './gdpdu.duckdb_extension';
+             LOAD gdpdu;
           3. Test with:
-             SELECT stps_is_valid_iban('DE89370400440532013000');
+             SELECT * FROM gdpdu_import('C:\path\to\gdpdu\data');
           EOF
 
           echo "Package contents:"
@@ -117,7 +111,7 @@ jobs:
           echo "Testing extension with: $DUCKDB_EXE"
 
           # Test loading the extension
-          "$DUCKDB_EXE" -c "INSTALL 'dist/stps.duckdb_extension'; LOAD stps; SELECT 'Extension loaded successfully' as status;" || {
+          "$DUCKDB_EXE" -c "INSTALL 'dist/gdpdu.duckdb_extension'; LOAD gdpdu; SELECT 'Extension loaded successfully' as status;" || {
             echo "❌ Extension failed to load"
             exit 1
           }
@@ -127,18 +121,18 @@ jobs:
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4
         with:
-          name: stps-windows-amd64-${{ github.sha }}
+          name: gdpdu-windows-amd64-${{ github.sha }}
           path: |
-            dist/stps.duckdb_extension
+            dist/gdpdu.duckdb_extension
             dist/build-info.txt
           retention-days: 90
 
       - name: Upload latest extension (branch-specific)
         uses: actions/upload-artifact@v4
         with:
-          name: stps-windows-amd64-latest-${{ github.ref_name }}
+          name: gdpdu-windows-amd64-latest-${{ github.ref_name }}
           path: |
-            dist/stps.duckdb_extension
+            dist/gdpdu.duckdb_extension
             dist/build-info.txt
           retention-days: 30
 
@@ -147,7 +141,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/stps.duckdb_extension
+            dist/gdpdu.duckdb_extension
             dist/build-info.txt
           draft: false
           prerelease: false
@@ -160,7 +154,7 @@ jobs:
           echo "## 🎉 Build Successful!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Artifacts Created" >> $GITHUB_STEP_SUMMARY
-          echo "- **Extension File**: \`stps.duckdb_extension\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Extension File**: \`gdpdu.duckdb_extension\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Platform**: Windows x64" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -168,12 +162,12 @@ jobs:
           echo "1. Go to the [Actions tab](https://github.com/${{ github.repository }}/actions)" >> $GITHUB_STEP_SUMMARY
           echo "2. Click on this workflow run" >> $GITHUB_STEP_SUMMARY
           echo "3. Scroll to **Artifacts** section at the bottom" >> $GITHUB_STEP_SUMMARY
-          echo "4. Download \`stps-windows-amd64-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Download \`gdpdu-windows-amd64-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`sql" >> $GITHUB_STEP_SUMMARY
           echo "-- In DuckDB CLI:" >> $GITHUB_STEP_SUMMARY
-          echo "INSTALL './stps.duckdb_extension';" >> $GITHUB_STEP_SUMMARY
-          echo "LOAD stps;" >> $GITHUB_STEP_SUMMARY
-          echo "SELECT stps_is_valid_iban('DE89370400440532013000');" >> $GITHUB_STEP_SUMMARY
+          echo "INSTALL './gdpdu.duckdb_extension';" >> $GITHUB_STEP_SUMMARY
+          echo "LOAD gdpdu;" >> $GITHUB_STEP_SUMMARY
+          echo "SELECT * FROM gdpdu_import('C:\\path\\to\\data');" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
