@@ -113,41 +113,42 @@ static void GdpduImportScan(
     }
 }
 
-} // namespace duckdb
-
-// DuckDB 1.4+ extension entry point
-extern "C" {
-
-DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
+// Internal load function
+static void LoadInternal(ExtensionLoader &loader) {
     // Set extension description
     loader.SetDescription("Import GDPdU (German tax audit) exports into DuckDB");
     
     // Create table function set to support both:
     // - gdpdu_import('path')                           -> uses "Name" for column names
     // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
-    duckdb::TableFunctionSet gdpdu_import_set("gdpdu_import");
+    TableFunctionSet gdpdu_import_set("gdpdu_import");
     
     // Single argument version (directory_path only)
-    duckdb::TableFunction gdpdu_import_1arg(
+    TableFunction gdpdu_import_1arg(
         "gdpdu_import",
-        {duckdb::LogicalType::VARCHAR},
-        duckdb::GdpduImportScan,
-        duckdb::GdpduImportBind,
-        duckdb::GdpduImportInit
+        {LogicalType::VARCHAR},
+        GdpduImportScan,
+        GdpduImportBind,
+        GdpduImportInit
     );
     gdpdu_import_set.AddFunction(gdpdu_import_1arg);
     
     // Two argument version (directory_path, column_name_field)
-    duckdb::TableFunction gdpdu_import_2args(
+    TableFunction gdpdu_import_2args(
         "gdpdu_import",
-        {duckdb::LogicalType::VARCHAR, duckdb::LogicalType::VARCHAR},
-        duckdb::GdpduImportScan,
-        duckdb::GdpduImportBind,
-        duckdb::GdpduImportInit
+        {LogicalType::VARCHAR, LogicalType::VARCHAR},
+        GdpduImportScan,
+        GdpduImportBind,
+        GdpduImportInit
     );
     gdpdu_import_set.AddFunction(gdpdu_import_2args);
     
     loader.RegisterFunction(gdpdu_import_set);
 }
 
+} // namespace duckdb
+
+// DuckDB 1.4+ extension entry point - use the macro OUTSIDE extern "C"
+DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
+    duckdb::LoadInternal(loader);
 }
