@@ -4,7 +4,11 @@
 
 namespace duckdb {
 
-// Extension metadata (optional, used for description)
-constexpr const char* GDPDU_EXTENSION_NAME = "gdpdu";
+class GdpduExtension : public Extension {
+public:
+    void Load(DuckDB &db) override;
+    std::string Name() override;
+    std::string Version() const override;
+};
 
 } // namespace duckdb

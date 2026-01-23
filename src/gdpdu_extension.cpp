@@ -6,7 +6,7 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/function_set.hpp"
-#include "duckdb/main/extension/extension_loader.hpp"
+#include "duckdb/main/extension_util.hpp"
 
 #include <iostream>
 
@@ -113,41 +113,67 @@ static void GdpduImportScan(
     }
 }
 
-} // namespace duckdb
-
-// DuckDB 1.4+ extension entry point using the new macro
-extern "C" {
-DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
-    // Set extension description
-    loader.SetDescription("Import GDPdU (German tax audit) exports into DuckDB");
-    
+// Load function - called when extension is loaded
+static void LoadInternal(DatabaseInstance &db) {
     // Create table function set to support both:
     // - gdpdu_import('path')                           -> uses "Name" for column names
     // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
-    duckdb::TableFunctionSet gdpdu_import_set("gdpdu_import");
+    TableFunctionSet gdpdu_import_set("gdpdu_import");
     
     // Single argument version (directory_path only)
-    duckdb::TableFunction gdpdu_import_1arg(
+    TableFunction gdpdu_import_1arg(
         "gdpdu_import",
-        {duckdb::LogicalType::VARCHAR},
-        duckdb::GdpduImportScan,
-        duckdb::GdpduImportBind,
-        duckdb::GdpduImportInit
+        {LogicalType::VARCHAR},
+        GdpduImportScan,
+        GdpduImportBind,
+        GdpduImportInit
     );
     gdpdu_import_set.AddFunction(gdpdu_import_1arg);
     
     // Two argument version (directory_path, column_name_field)
-    duckdb::TableFunction gdpdu_import_2args(
+    TableFunction gdpdu_import_2args(
         "gdpdu_import",
-        {duckdb::LogicalType::VARCHAR, duckdb::LogicalType::VARCHAR},
-        duckdb::GdpduImportScan,
-        duckdb::GdpduImportBind,
-        duckdb::GdpduImportInit
+        {LogicalType::VARCHAR, LogicalType::VARCHAR},
+        GdpduImportScan,
+        GdpduImportBind,
+        GdpduImportInit
     );
     gdpdu_import_set.AddFunction(gdpdu_import_2args);
     
-    loader.RegisterFunction(gdpdu_import_set);
-    
-    std::cout << "GDPdU extension loaded successfully!" << std::endl;
+    ExtensionUtil::RegisterFunction(db, gdpdu_import_set);
 }
+
+// Extension load entry point
+void GdpduExtension::Load(DuckDB &db) {
+    LoadInternal(*db.instance);
+}
+
+// Extension name
+std::string GdpduExtension::Name() {
+    return "gdpdu";
+}
+
+// Extension version
+std::string GdpduExtension::Version() const {
+#ifdef EXT_VERSION_GDPDU
+    return EXT_VERSION_GDPDU;
+#else
+    return "0.1.0";
+#endif
+}
+
+} // namespace duckdb
+
+// C entry point for loading the extension
+extern "C" {
+
+DUCKDB_EXTENSION_API void gdpdu_init(duckdb::DatabaseInstance &db) {
+    duckdb::DuckDB db_wrapper(db);
+    db_wrapper.LoadExtension<duckdb::GdpduExtension>();
+}
+
+DUCKDB_EXTENSION_API const char *gdpdu_version() {
+    return duckdb::DuckDB::LibraryVersion();
+}
+
 }
