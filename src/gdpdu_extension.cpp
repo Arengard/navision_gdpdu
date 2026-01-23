@@ -1,15 +1,13 @@
-#define DUCKDB_EXTENSION_MAIN
-
 #include "gdpdu_extension.hpp"
 #include "gdpdu_importer.hpp"
 #include "duckdb.hpp"
+#include "duckdb/main/extension.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/function/function_set.hpp"
-#include "duckdb/catalog/catalog.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/connection.hpp"
-#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
 namespace duckdb {
 
@@ -114,52 +112,58 @@ static void GdpduImportScan(
     }
 }
 
-// Internal load function - registers functions with the catalog
-static void LoadInternal(DatabaseInstance &db) {
-    Connection con(db);
+// Extension class for DuckDB 1.4+
+class GdpduExtension : public Extension {
+public:
+    void Load(ExtensionLoader &loader) override {
+        // Create table function set to support both:
+        // - gdpdu_import('path')                           -> uses "Name" for column names
+        // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
+        TableFunctionSet gdpdu_import_set("gdpdu_import");
+        
+        // Single argument version (directory_path only)
+        TableFunction gdpdu_import_1arg(
+            "gdpdu_import",
+            {LogicalType::VARCHAR},
+            GdpduImportScan,
+            GdpduImportBind,
+            GdpduImportInit
+        );
+        gdpdu_import_set.AddFunction(gdpdu_import_1arg);
+        
+        // Two argument version (directory_path, column_name_field)
+        TableFunction gdpdu_import_2args(
+            "gdpdu_import",
+            {LogicalType::VARCHAR, LogicalType::VARCHAR},
+            GdpduImportScan,
+            GdpduImportBind,
+            GdpduImportInit
+        );
+        gdpdu_import_set.AddFunction(gdpdu_import_2args);
+        
+        // Register with the extension loader
+        loader.RegisterFunction(gdpdu_import_set);
+    }
     
-    // Create table function set to support both:
-    // - gdpdu_import('path')                           -> uses "Name" for column names
-    // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
-    TableFunctionSet gdpdu_import_set("gdpdu_import");
+    std::string Name() override {
+        return "gdpdu";
+    }
     
-    // Single argument version (directory_path only)
-    TableFunction gdpdu_import_1arg(
-        "gdpdu_import",
-        {LogicalType::VARCHAR},
-        GdpduImportScan,
-        GdpduImportBind,
-        GdpduImportInit
-    );
-    gdpdu_import_set.AddFunction(gdpdu_import_1arg);
-    
-    // Two argument version (directory_path, column_name_field)
-    TableFunction gdpdu_import_2args(
-        "gdpdu_import",
-        {LogicalType::VARCHAR, LogicalType::VARCHAR},
-        GdpduImportScan,
-        GdpduImportBind,
-        GdpduImportInit
-    );
-    gdpdu_import_set.AddFunction(gdpdu_import_2args);
-    
-    // Register with the catalog
-    CreateTableFunctionInfo info(gdpdu_import_set);
-    auto &catalog = Catalog::GetSystemCatalog(db);
-    catalog.CreateTableFunction(*con.context, info);
-}
+    std::string Version() const override {
+#ifdef EXT_VERSION
+        return EXT_VERSION;
+#else
+        return "v0.1.0";
+#endif
+    }
+};
 
 } // namespace duckdb
 
-// Extension entry point - uses the standard {name}_init pattern
+// Entry point for the loadable extension using DuckDB 1.4+ CPP extension API
 extern "C" {
-
-DUCKDB_EXTENSION_API void gdpdu_init(duckdb::DatabaseInstance &db) {
-    duckdb::LoadInternal(db);
+DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
+    duckdb::GdpduExtension ext;
+    ext.Load(loader);
 }
-
-DUCKDB_EXTENSION_API const char *gdpdu_version() {
-    return duckdb::DuckDB::LibraryVersion();
-}
-
 }

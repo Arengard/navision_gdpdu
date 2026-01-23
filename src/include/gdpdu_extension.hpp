@@ -1,10 +1,15 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/main/extension.hpp"
 
 namespace duckdb {
 
-// Extension name constant
-constexpr const char* GDPDU_EXTENSION_NAME = "gdpdu";
+class GdpduExtension : public Extension {
+public:
+    void Load(ExtensionLoader &loader) override;
+    std::string Name() override;
+    std::string Version() const override;
+};
 
 } // namespace duckdb
