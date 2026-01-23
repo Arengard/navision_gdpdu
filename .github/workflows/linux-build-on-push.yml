@@ -99,8 +99,8 @@ jobs:
 
           echo "Testing extension with: $DUCKDB_EXE"
 
-          # Test loading the extension
-          "$DUCKDB_EXE" -c "INSTALL 'dist/gdpdu.duckdb_extension'; LOAD gdpdu; SELECT 'Extension loaded successfully' as status;" || {
+          # Test loading the extension (use -unsigned for unsigned extensions)
+          "$DUCKDB_EXE" -unsigned -c "INSTALL 'dist/gdpdu.duckdb_extension'; LOAD gdpdu; SELECT 'Extension loaded successfully' as status;" || {
             echo "❌ Extension failed to load"
             exit 1
           }
