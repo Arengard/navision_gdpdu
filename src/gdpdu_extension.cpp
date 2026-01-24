@@ -158,7 +158,9 @@ std::string GdpduExtension::Version() const {
 } // namespace duckdb
 
 // Entry point for the loadable extension using DuckDB 1.4+ CPP extension API
+extern "C" {
 DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
     duckdb::GdpduExtension ext;
     ext.Load(loader);
+}
 }
