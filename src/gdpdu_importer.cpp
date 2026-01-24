@@ -81,7 +81,7 @@ static std::string build_select_clause(const TableDef& table) {
     return ss.str();
 }
 
-std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& directory_path, const std::string& column_name_field) {
+std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::string& directory_path, const std::string& column_name_field) {
     std::vector<ImportResult> results;
     
     // Step 1: Parse index.xml

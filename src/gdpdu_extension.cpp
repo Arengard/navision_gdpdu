@@ -72,7 +72,7 @@ static unique_ptr<GlobalTableFunctionState> GdpduImportInit(
     auto &db = DatabaseInstance::GetDatabase(context);
     Connection conn(db);
     
-    state->results = import_gdpdu(conn, bind_data.directory_path, bind_data.column_name_field);
+    state->results = import_gdpdu_navision(conn, bind_data.directory_path, bind_data.column_name_field);
     state->current_row = 0;
     state->done = state->results.empty();
     
@@ -115,13 +115,13 @@ static void GdpduImportScan(
 // Extension class implementation for DuckDB 1.4+
 void GdpduExtension::Load(ExtensionLoader &loader) {
     // Create table function set to support both:
-    // - gdpdu_import('path')                           -> uses "Name" for column names
-    // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
-    TableFunctionSet gdpdu_import_set("gdpdu_import");
+    // - import_gdpdu_navision('path')                           -> uses "Name" for column names
+    // - import_gdpdu_navision('path', 'Description')            -> uses "Description" for column names
+    TableFunctionSet gdpdu_import_set("import_gdpdu_navision");
 
     // Single argument version (directory_path only)
     TableFunction gdpdu_import_1arg(
-        "gdpdu_import",
+        "import_gdpdu_navision",
         {LogicalType::VARCHAR},
         GdpduImportScan,
         GdpduImportBind,
@@ -131,7 +131,7 @@ void GdpduExtension::Load(ExtensionLoader &loader) {
 
     // Two argument version (directory_path, column_name_field)
     TableFunction gdpdu_import_2args(
-        "gdpdu_import",
+        "import_gdpdu_navision",
         {LogicalType::VARCHAR, LogicalType::VARCHAR},
         GdpduImportScan,
         GdpduImportBind,
@@ -158,9 +158,7 @@ std::string GdpduExtension::Version() const {
 } // namespace duckdb
 
 // Entry point for the loadable extension using DuckDB 1.4+ CPP extension API
-extern "C" {
 DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
     duckdb::GdpduExtension ext;
     ext.Load(loader);
-}
 }

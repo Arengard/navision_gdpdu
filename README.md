@@ -1,10 +1,22 @@
-# GDPdU Extension for DuckDB
+# GDPdU Navision Extension for DuckDB
 
-A DuckDB extension for importing GDPdU (Grundsätze zum Datenzugriff und zur Prüfbarkeit digitaler Unterlagen) exports - the German standard format for tax audit data.
+A DuckDB extension for importing GDPdU (Grundsätze zum Datenzugriff und zur Prüfbarkeit digitaler Unterlagen) exports from Microsoft Dynamics NAV (Navision) - the German standard format for tax audit data.
 
 ## Installation
 
-Build the extension from source using the DuckDB extension build system.
+Build the extension from source using the DuckDB extension build system:
+
+```bash
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+Then load the extension in DuckDB:
+
+```sql
+LOAD 'path/to/gdpdu.duckdb_extension';
+```
 
 ## Usage
 
@@ -13,7 +25,7 @@ Build the extension from source using the DuckDB extension build system.
 Import all tables from a GDPdU export directory:
 
 ```sql
-SELECT * FROM gdpdu_import('C:\path\to\gdpdu\data');
+SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data');
 ```
 
 This will:
@@ -28,11 +40,11 @@ By default, column names are taken from the `<Name>` element in the XML. You can
 
 ```sql
 -- Use "Name" field for column names (default)
-SELECT * FROM gdpdu_import('C:\path\to\gdpdu\data');
-SELECT * FROM gdpdu_import('C:\path\to\gdpdu\data', 'Name');
+SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data');
+SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data', 'Name');
 
 -- Use "Description" field for column names (German labels)
-SELECT * FROM gdpdu_import('C:\path\to\gdpdu\data', 'Description');
+SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data', 'Description');
 ```
 
 ### Column Name Conversion
@@ -62,8 +74,8 @@ The function returns a table with the following columns:
 ### Example
 
 ```sql
--- Import GDPdU data
-SELECT * FROM gdpdu_import('C:\gdpdu\Gdpdu Data');
+-- Import GDPdU data from Navision export
+SELECT * FROM import_gdpdu_navision('/data/gdpdu_export');
 
 -- Result:
 -- ┌──────────────┬───────────┬────────┐

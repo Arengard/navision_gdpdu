@@ -23,6 +23,6 @@ struct ImportResult {
 // 3. Loads data from .txt files
 // Returns vector of results for each table
 // column_name_field: "Name" (default) or "Description" - which XML element to use for column names
-std::vector<ImportResult> import_gdpdu(Connection& conn, const std::string& directory_path, const std::string& column_name_field = "Name");
+std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::string& directory_path, const std::string& column_name_field = "Name");
 
 } // namespace duckdb

@@ -80,27 +80,26 @@ jobs:
              INSTALL './gdpdu.duckdb_extension';
              LOAD gdpdu;
           3. Test with:
-             SELECT * FROM gdpdu_import('/path/to/gdpdu/data');
+             SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data');
           EOF
 
           echo "Package contents:"
           ls -lh dist/
 
-      # Test step disabled - entry point export issue being investigated
-      # - name: Test extension loading
-      #   run: |
-      #     # Find DuckDB executable
-      #     DUCKDB_EXE=$(find build -name "duckdb" -type f | head -1)
-      #     if [ -z "$DUCKDB_EXE" ]; then
-      #       echo "⚠️  DuckDB executable not found, skipping test"
-      #       exit 0
-      #     fi
-      #     echo "Testing extension with: $DUCKDB_EXE"
-      #     "$DUCKDB_EXE" -unsigned -c "INSTALL 'dist/gdpdu.duckdb_extension'; LOAD gdpdu; SELECT 'Extension loaded successfully' as status;" || {
-      #       echo "❌ Extension failed to load"
-      #       exit 1
-      #     }
-      #     echo "✅ Extension loaded and tested successfully!"
+      - name: Test extension loading
+        run: |
+          # Find DuckDB executable
+          DUCKDB_EXE=$(find build -name "duckdb" -type f | head -1)
+          if [ -z "$DUCKDB_EXE" ]; then
+            echo "⚠️  DuckDB executable not found, skipping test"
+            exit 0
+          fi
+          echo "Testing extension with: $DUCKDB_EXE"
+          "$DUCKDB_EXE" -unsigned -c "LOAD 'dist/gdpdu.duckdb_extension'; SELECT 'Extension loaded successfully' as status;" || {
+            echo "❌ Extension failed to load"
+            exit 1
+          }
+          echo "✅ Extension loaded and tested successfully!"
 
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4
@@ -152,5 +151,5 @@ jobs:
           echo "-- In DuckDB CLI:" >> $GITHUB_STEP_SUMMARY
           echo "INSTALL './gdpdu.duckdb_extension';" >> $GITHUB_STEP_SUMMARY
           echo "LOAD gdpdu;" >> $GITHUB_STEP_SUMMARY
-          echo "SELECT * FROM gdpdu_import('/path/to/data');" >> $GITHUB_STEP_SUMMARY
+          echo "SELECT * FROM import_gdpdu_navision('/path/to/data');" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
