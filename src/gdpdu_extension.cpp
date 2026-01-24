@@ -112,51 +112,48 @@ static void GdpduImportScan(
     }
 }
 
-// Extension class for DuckDB 1.4+
-class GdpduExtension : public Extension {
-public:
-    void Load(ExtensionLoader &loader) override {
-        // Create table function set to support both:
-        // - gdpdu_import('path')                           -> uses "Name" for column names
-        // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
-        TableFunctionSet gdpdu_import_set("gdpdu_import");
-        
-        // Single argument version (directory_path only)
-        TableFunction gdpdu_import_1arg(
-            "gdpdu_import",
-            {LogicalType::VARCHAR},
-            GdpduImportScan,
-            GdpduImportBind,
-            GdpduImportInit
-        );
-        gdpdu_import_set.AddFunction(gdpdu_import_1arg);
-        
-        // Two argument version (directory_path, column_name_field)
-        TableFunction gdpdu_import_2args(
-            "gdpdu_import",
-            {LogicalType::VARCHAR, LogicalType::VARCHAR},
-            GdpduImportScan,
-            GdpduImportBind,
-            GdpduImportInit
-        );
-        gdpdu_import_set.AddFunction(gdpdu_import_2args);
-        
-        // Register with the extension loader
-        loader.RegisterFunction(gdpdu_import_set);
-    }
-    
-    std::string Name() override {
-        return "gdpdu";
-    }
-    
-    std::string Version() const override {
+// Extension class implementation for DuckDB 1.4+
+void GdpduExtension::Load(ExtensionLoader &loader) {
+    // Create table function set to support both:
+    // - gdpdu_import('path')                           -> uses "Name" for column names
+    // - gdpdu_import('path', 'Description')            -> uses "Description" for column names
+    TableFunctionSet gdpdu_import_set("gdpdu_import");
+
+    // Single argument version (directory_path only)
+    TableFunction gdpdu_import_1arg(
+        "gdpdu_import",
+        {LogicalType::VARCHAR},
+        GdpduImportScan,
+        GdpduImportBind,
+        GdpduImportInit
+    );
+    gdpdu_import_set.AddFunction(gdpdu_import_1arg);
+
+    // Two argument version (directory_path, column_name_field)
+    TableFunction gdpdu_import_2args(
+        "gdpdu_import",
+        {LogicalType::VARCHAR, LogicalType::VARCHAR},
+        GdpduImportScan,
+        GdpduImportBind,
+        GdpduImportInit
+    );
+    gdpdu_import_set.AddFunction(gdpdu_import_2args);
+
+    // Register with the extension loader
+    loader.RegisterFunction(gdpdu_import_set);
+}
+
+std::string GdpduExtension::Name() {
+    return "gdpdu";
+}
+
+std::string GdpduExtension::Version() const {
 #ifdef EXT_VERSION
-        return EXT_VERSION;
+    return EXT_VERSION;
 #else
-        return "v0.1.0";
+    return "v0.1.0";
 #endif
-    }
-};
+}
 
 } // namespace duckdb
 
