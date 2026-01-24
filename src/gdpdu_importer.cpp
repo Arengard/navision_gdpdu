@@ -39,6 +39,50 @@ static std::string escape_sql(const std::string& value) {
     return result;
 }
 
+// Clean and trim all VARCHAR columns in a table
+static void clean_and_trim_columns(Connection& conn, const std::string& table_name) {
+    // Get column information
+    auto desc_result = conn.Query("DESCRIBE \"" + table_name + "\"");
+    if (desc_result->HasError()) {
+        return;
+    }
+    
+    std::vector<std::string> varchar_columns;
+    for (idx_t i = 0; i < desc_result->RowCount(); ++i) {
+        std::string col_name = desc_result->GetValue(0, i).GetValue<std::string>();
+        std::string col_type = desc_result->GetValue(1, i).GetValue<std::string>();
+        
+        // Check if it's a VARCHAR type
+        if (col_type.find("VARCHAR") != std::string::npos || 
+            col_type.find("TEXT") != std::string::npos ||
+            col_type.find("CHAR") != std::string::npos) {
+            varchar_columns.push_back(col_name);
+        }
+    }
+    
+    if (varchar_columns.empty()) {
+        return;
+    }
+    
+    // Build UPDATE statement to clean all VARCHAR columns
+    // Remove control characters (0x00-0x1F, 0x7F-0x9F) but keep printable characters
+    std::ostringstream update_sql;
+    update_sql << "UPDATE \"" << table_name << "\" SET ";
+    
+    for (size_t i = 0; i < varchar_columns.size(); ++i) {
+        if (i > 0) update_sql << ", ";
+        std::string col = escape_sql(varchar_columns[i]);
+        // Remove control characters and trim whitespace
+        update_sql << "\"" << col << "\" = TRIM(REGEXP_REPLACE(\"" << col << "\", '[\\x00-\\x1F\\x7F-\\x9F]', ''))";
+    }
+    
+    try {
+        conn.Query(update_sql.str());
+    } catch (const std::exception& e) {
+        // Ignore errors in cleaning - data is already imported
+    }
+}
+
 // Build column list for INSERT
 static std::string build_column_list(const TableDef& table) {
     std::ostringstream ss;
@@ -121,39 +165,166 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
         // - semicolon delimiter
         // - no header (GDPdU files don't have headers)
         // - explicit column definitions as VARCHAR
-        std::ostringstream sql;
-        sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
-        sql << "SELECT " << build_select_clause(table) << " ";
-        sql << "FROM read_csv('" << escape_sql(data_path) << "', ";
-        sql << "delim=';', ";
-        sql << "header=false, ";
-        sql << "quote='\"', ";
-        sql << "all_varchar=true, ";
-        sql << "columns={";
+        // - skip lines if Range/From is specified
+        // - disable strict mode to handle malformed rows
+        // - enable null padding for missing columns
+        // - try multiple encodings for German files
         
-        // Define expected columns with explicit names
-        for (size_t j = 0; j < table.columns.size(); ++j) {
-            if (j > 0) sql << ", ";
-            sql << "'column" << j << "': 'VARCHAR'";
-        }
-        sql << "})";
+        // Try different encodings in order of likelihood for German/European files
+        std::vector<std::string> encodings_to_try = {
+            "UTF-8",                    // Most common modern encoding
+            "ISO-8859-1",              // Latin-1, common for German
+            "Windows-1252",            // Windows Western European
+            "CP1252",                   // Windows-1252 alias
+            "ISO_8859_1",              // ISO-8859-1 alias
+            "8859_1",                  // ISO-8859-1 alias
+            "latin-1",                 // ISO-8859-1 alias
+            "ISO8859_1",               // ISO-8859-1 alias
+            "windows-1252-2000",       // Windows-1252 variant
+            "CP1250",                  // Windows Central European
+            "ISO-8859-15",             // Latin-9
+            "ISO_8859_15",             // ISO-8859-15 alias
+            "8859_15",                 // ISO-8859-15 alias
+            "ISO8859_15",              // ISO-8859-15 alias
+            "Windows-1250",            // Windows Central European
+            "windows-1250-2000",       // Windows-1250 variant
+            "CP850",                   // DOS Western European
+            "IBM_850",                 // CP850 alias
+            "cp850",                   // CP850 lowercase
+            "CP437",                   // DOS US
+            "cp437",                   // CP437 lowercase
+            "UTF-16",                  // UTF-16 (less common for CSV)
+            "utf-16"                   // UTF-16 lowercase
+        };
+        bool success = false;
         
-        try {
-            auto query_result = conn.Query(sql.str());
-            if (query_result->HasError()) {
+        for (const auto& encoding : encodings_to_try) {
+            std::ostringstream sql;
+            sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
+            sql << "SELECT " << build_select_clause(table) << " ";
+            sql << "FROM read_csv('" << escape_sql(data_path) << "', ";
+            sql << "delim=';', ";
+            sql << "header=false, ";
+            sql << "quote='\"', ";
+            sql << "all_varchar=true, ";
+            sql << "auto_detect=false, ";
+            sql << "strict_mode=false, ";
+            sql << "null_padding=true, ";
+            sql << "encoding='" << encoding << "', ";
+            if (table.skip_lines > 0) {
+                sql << "skip=" << table.skip_lines << ", ";
+            }
+            sql << "columns={";
+            
+            // Define expected columns with explicit names
+            for (size_t j = 0; j < table.columns.size(); ++j) {
+                if (j > 0) sql << ", ";
+                sql << "'column" << j << "': 'VARCHAR'";
+            }
+            sql << "})";
+            
+            try {
+                auto query_result = conn.Query(sql.str());
+                if (!query_result->HasError()) {
+                    success = true;
+                    break;
+                }
+                // If error contains encoding info, try next encoding
+                std::string error = query_result->GetError();
+                if (error.find("unicode") != std::string::npos || 
+                    error.find("encoding") != std::string::npos ||
+                    error.find("utf-8") != std::string::npos) {
+                    continue;  // Try next encoding
+                }
+                // Other error, break and report
                 result.row_count = 0;
-                result.status = "Load failed: " + query_result->GetError();
-            } else {
+                result.status = "Load failed: " + error;
+                results.push_back(result);
+                success = false;
+                break;
+            } catch (const std::exception& e) {
+                std::string error = e.what();
+                if (error.find("unicode") != std::string::npos || 
+                    error.find("encoding") != std::string::npos) {
+                    continue;  // Try next encoding
+                }
+                // Other error
+                result.row_count = 0;
+                result.status = std::string("Load failed: ") + e.what();
+                results.push_back(result);
+                success = false;
+                break;
+            }
+        }
+        
+            // If all encodings failed, try with ignore_errors as last resort
+            // Try a few more encodings with ignore_errors enabled
+            if (!success) {
+                std::vector<std::string> fallback_encodings = {
+                    "ISO-8859-1", "Windows-1252", "CP1252", "UTF-8", "CP850"
+                };
+                
+                for (const auto& encoding : fallback_encodings) {
+                    std::ostringstream sql;
+                    sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
+                    sql << "SELECT " << build_select_clause(table) << " ";
+                    sql << "FROM read_csv('" << escape_sql(data_path) << "', ";
+                    sql << "delim=';', ";
+                    sql << "header=false, ";
+                    sql << "quote='\"', ";
+                    sql << "all_varchar=true, ";
+                    sql << "auto_detect=false, ";
+                    sql << "strict_mode=false, ";
+                    sql << "null_padding=true, ";
+                    sql << "encoding='" << encoding << "', ";
+                    sql << "ignore_errors=true, ";
+                    if (table.skip_lines > 0) {
+                        sql << "skip=" << table.skip_lines << ", ";
+                    }
+                    sql << "columns={";
+                    
+                    for (size_t j = 0; j < table.columns.size(); ++j) {
+                        if (j > 0) sql << ", ";
+                        sql << "'column" << j << "': 'VARCHAR'";
+                    }
+                    sql << "})";
+                    
+                    try {
+                        auto query_result = conn.Query(sql.str());
+                        if (!query_result->HasError()) {
+                            success = true;
+                            break;
+                        }
+                    } catch (const std::exception& e) {
+                        // Try next encoding
+                        continue;
+                    }
+                }
+                
+                if (!success) {
+                    result.row_count = 0;
+                    result.status = "Load failed: Could not read file with any encoding (tried " + 
+                                   std::to_string(encodings_to_try.size() + fallback_encodings.size()) + " encodings)";
+                    results.push_back(result);
+                    continue;
+                }
+            }
+        
+        if (success) {
+            try {
+                // Clean and trim all VARCHAR columns (GDPdU already has proper types from XML)
+                clean_and_trim_columns(conn, table.name);
+                
                 // Get row count
                 auto count_result = conn.Query("SELECT COUNT(*) FROM \"" + table.name + "\"");
                 if (!count_result->HasError() && count_result->RowCount() > 0) {
                     result.row_count = count_result->GetValue(0, 0).GetValue<int64_t>();
                 }
                 result.status = "OK";
+            } catch (const std::exception& e) {
+                result.row_count = 0;
+                result.status = std::string("Load failed: ") + e.what();
             }
-        } catch (const std::exception& e) {
-            result.row_count = 0;
-            result.status = std::string("Load failed: ") + e.what();
         }
         
         results.push_back(result);

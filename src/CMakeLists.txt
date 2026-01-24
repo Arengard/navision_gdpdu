@@ -9,6 +9,13 @@ set(EXTENSION_SOURCES
     gdpdu_table_creator.cpp
     gdpdu_data_parser.cpp
     gdpdu_importer.cpp
+    gdpdu_exporter.cpp
+    xml_parser_factory.cpp
+    xml_parser_registration.cpp
+    generic_xml_parser.cpp
+    gdpdu_xml_parser.cpp
+    generic_xml_importer.cpp
+    folder_importer.cpp
 )
 
 build_static_extension(gdpdu ${EXTENSION_SOURCES})

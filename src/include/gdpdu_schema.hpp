@@ -30,10 +30,11 @@ struct TableDef {
     bool is_utf8;               // true if UTF8 element present
     char decimal_symbol;        // From DecimalSymbol (default ',')
     char digit_grouping;        // From DigitGroupingSymbol (default '.')
+    int skip_lines;             // From Range/From element (lines to skip, default 0)
     std::vector<ColumnDef> columns;  // All columns in order
     std::vector<std::string> primary_key_columns;  // Names of PK columns
     
-    TableDef() : is_utf8(false), decimal_symbol(','), digit_grouping('.') {}
+    TableDef() : is_utf8(false), decimal_symbol(','), digit_grouping('.'), skip_lines(0) {}
 };
 
 // Schema definition from DataSet/Media

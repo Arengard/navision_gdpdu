@@ -199,6 +199,7 @@ static TableDef parse_table(const pugi::xml_node& table_node, const std::string&
     // Extract locale settings (with defaults for German locale)
     table.decimal_symbol = ',';
     table.digit_grouping = '.';
+    table.skip_lines = 0;
     
     pugi::xml_node decimal_node = table_node.child("DecimalSymbol");
     if (!decimal_node.empty()) {
@@ -213,6 +214,23 @@ static TableDef parse_table(const pugi::xml_node& table_node, const std::string&
         const char* grouping_text = grouping_node.child_value();
         if (grouping_text && grouping_text[0] != '\0') {
             table.digit_grouping = grouping_text[0];
+        }
+    }
+    
+    // Extract Range/From to determine how many lines to skip
+    pugi::xml_node range_node = table_node.child("Range");
+    if (!range_node.empty()) {
+        pugi::xml_node from_node = range_node.child("From");
+        if (!from_node.empty()) {
+            const char* from_text = from_node.child_value();
+            if (from_text && from_text[0] != '\0') {
+                // Range/From is 1-based, but we need to skip (From - 1) lines
+                // e.g., From=3 means skip 2 lines (lines 1 and 2)
+                int from_value = std::stoi(from_text);
+                if (from_value > 1) {
+                    table.skip_lines = from_value - 1;
+                }
+            }
         }
     }
     
