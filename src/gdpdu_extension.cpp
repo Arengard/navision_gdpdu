@@ -163,8 +163,7 @@ std::string GdpduExtension::Version() const {
 } // namespace duckdb
 
 // Entry point for the loadable extension using DuckDB 1.4+ CPP extension API
-extern "C" {
-DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
+// Explicitly define with visibility attribute to ensure symbol is exported
+extern "C" DUCKDB_EXTENSION_API void gdpdu_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
     duckdb::LoadInternal(loader);
-}
 }
