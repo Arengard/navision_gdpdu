@@ -7,13 +7,18 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
+#include <cstdlib>
 
 #ifdef _WIN32
 #include <direct.h>
+#include <windows.h>
 #define mkdir _mkdir
+#define realpath(N,R) _fullpath((R),(N),_MAX_PATH)
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #endif
 
 namespace duckdb {
@@ -51,19 +56,91 @@ static std::string join_path(const std::string& dir, const std::string& file) {
     return norm_dir + "/" + file;
 }
 
-// Helper to create directory if it doesn't exist
+// Helper to create directory recursively if it doesn't exist
 static bool ensure_directory_exists(const std::string& path) {
     struct stat info;
     if (stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode)) {
         return true;  // Directory exists
     }
     
-    // Try to create directory
+    // Normalize path
+    std::string norm_path = normalize_path(path);
+    if (norm_path.empty()) {
+        return false;
+    }
+    
+    // Split path into components and create each directory
+    std::string current_path;
+    bool is_absolute = false;
+    
     #ifdef _WIN32
-        return _mkdir(path.c_str()) == 0 || errno == EEXIST;
+        // On Windows, check for drive letter (C:, D:, etc.)
+        if (norm_path.length() >= 2 && norm_path[1] == ':') {
+            is_absolute = true;
+            current_path = norm_path.substr(0, 2);  // "C:"
+            if (norm_path.length() > 2 && norm_path[2] == '/') {
+                current_path += "/";
+            }
+        } else if (norm_path[0] == '/') {
+            is_absolute = true;
+        }
     #else
-        return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+        is_absolute = (norm_path[0] == '/');
     #endif
+    
+    size_t pos = 0;
+    #ifdef _WIN32
+        // Skip drive letter and initial slash on Windows
+        if (norm_path.length() >= 2 && norm_path[1] == ':') {
+            pos = (norm_path.length() > 2 && norm_path[2] == '/') ? 3 : 2;
+        } else if (norm_path[0] == '/') {
+            pos = 1;
+        }
+    #else
+        if (is_absolute) {
+            pos = 1;  // Skip leading slash
+        }
+    #endif
+    
+    while (pos < norm_path.length()) {
+        size_t next_slash = norm_path.find('/', pos);
+        if (next_slash == std::string::npos) {
+            next_slash = norm_path.length();
+        }
+        
+        std::string component = norm_path.substr(pos, next_slash - pos);
+        if (!component.empty()) {
+            // Build current path
+            if (current_path.empty()) {
+                current_path = component;
+            } else {
+                #ifdef _WIN32
+                    current_path += "\\" + component;
+                #else
+                    current_path += "/" + component;
+                #endif
+            }
+            
+            // Check if this directory exists
+            struct stat dir_info;
+            if (stat(current_path.c_str(), &dir_info) != 0 || !S_ISDIR(dir_info.st_mode)) {
+                // Directory doesn't exist, create it
+                #ifdef _WIN32
+                    if (_mkdir(current_path.c_str()) != 0 && errno != EEXIST) {
+                        return false;
+                    }
+                #else
+                    if (mkdir(current_path.c_str(), 0755) != 0 && errno != EEXIST) {
+                        return false;
+                    }
+                #endif
+            }
+        }
+        
+        pos = next_slash + 1;
+    }
+    
+    return true;
 }
 
 // Convert DuckDB type to GDPdU type
@@ -152,16 +229,89 @@ static std::string to_pascal_case(const std::string& input) {
     return result;
 }
 
+// Convert path to absolute path
+static std::string to_absolute_path(const std::string& path) {
+    if (path.empty()) {
+        return path;
+    }
+    
+    std::string norm_path = normalize_path(path);
+    
+    // If already absolute (starts with / on Unix or has drive letter on Windows), return as is
+    #ifdef _WIN32
+        if (norm_path.length() >= 2 && norm_path[1] == ':') {
+            return norm_path;
+        }
+    #else
+        if (norm_path[0] == '/') {
+            return norm_path;
+        }
+    #endif
+    
+    // Handle paths that look like they should be absolute (e.g., "Users/..." on macOS)
+    // If path starts with "Users/" or "home/", assume it should be absolute
+    #ifndef _WIN32
+        // Check before normalization to catch paths like "Users/ramonljevo/..."
+        std::string original_lower = path;
+        std::transform(original_lower.begin(), original_lower.end(), original_lower.begin(), ::tolower);
+        if (norm_path.find("Users/") == 0 || norm_path.find("users/") == 0 || 
+            norm_path.find("home/") == 0 || norm_path.find("Home/") == 0) {
+            return "/" + norm_path;
+        }
+    #endif
+    
+    // Relative path - convert to absolute using current working directory
+    char cwd[PATH_MAX];
+    #ifdef _WIN32
+        if (_getcwd(cwd, sizeof(cwd)) != nullptr) {
+            std::string abs_path = std::string(cwd);
+            if (abs_path.back() != '\\' && abs_path.back() != '/') {
+                abs_path += "\\";
+            }
+            abs_path += norm_path;
+            return normalize_path(abs_path);
+        }
+    #else
+        if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+            std::string cwd_str = std::string(cwd);
+            // If the relative path starts with a component that matches the last component of cwd,
+            // it might be a mistake - but we'll still create the path
+            // However, if norm_path already starts with "Users/", we should have caught it above
+            std::string abs_path = cwd_str;
+            if (abs_path.back() != '/') {
+                abs_path += "/";
+            }
+            abs_path += norm_path;
+            std::string result = normalize_path(abs_path);
+            // Double-check: if result contains "Users/Users/", something went wrong
+            // This can happen if cwd is /Users/ramonljevo/... and path is Users/ramonljevo/...
+            size_t double_users = result.find("/Users/Users/");
+            if (double_users != std::string::npos) {
+                // Remove the duplicate: /Users/ramonljevo/Users/ramonljevo/... -> /Users/ramonljevo/...
+                result = result.substr(0, double_users + 7) + result.substr(double_users + 20);
+            }
+            return result;
+        }
+    #endif
+    
+    // Fallback: return normalized original path
+    return norm_path;
+}
+
 ExportResult export_gdpdu(Connection& conn, const std::string& export_path, const std::string& table_name) {
     ExportResult result;
     result.table_name = table_name;
-    result.file_path = export_path;
     
     try {
-        // Ensure export directory exists
-        std::string norm_path = normalize_path(export_path);
-        if (!ensure_directory_exists(norm_path)) {
-            result.status = "Failed to create export directory: " + norm_path;
+        // Convert to absolute path and ensure export directory exists
+        std::string abs_path = to_absolute_path(export_path);
+        result.file_path = abs_path;
+        
+        // Debug: log the path being used
+        // std::cerr << "Export path: " << export_path << " -> " << abs_path << std::endl;
+        
+        if (!ensure_directory_exists(abs_path)) {
+            result.status = "Failed to create export directory: " + abs_path;
             return result;
         }
         
@@ -203,7 +353,7 @@ ExportResult export_gdpdu(Connection& conn, const std::string& export_path, cons
         
         // Create data file name
         std::string data_file = table_name + ".txt";
-        std::string data_path = join_path(norm_path, data_file);
+        std::string data_path = join_path(abs_path, data_file);
         
         // Export data to CSV with German formatting
         // First, create a temporary view with formatted data
@@ -244,13 +394,21 @@ ExportResult export_gdpdu(Connection& conn, const std::string& export_path, cons
         }
         
         // Export to CSV with semicolon delimiter, no header
+        // Use absolute path for COPY command (DuckDB accepts forward slashes on Windows)
         std::ostringstream copy_sql;
         copy_sql << "COPY export_temp TO '" << escape_sql(data_path) << "' ";
         copy_sql << "(FORMAT CSV, DELIMITER ';', HEADER false, QUOTE '\"')";
         
         auto copy_result = conn.Query(copy_sql.str());
         if (copy_result->HasError()) {
-            result.status = "Failed to export data: " + copy_result->GetError();
+            result.status = "Failed to export data: " + copy_result->GetError() + " (path: " + data_path + ")";
+            return result;
+        }
+        
+        // Verify file was created
+        struct stat file_info;
+        if (stat(data_path.c_str(), &file_info) != 0) {
+            result.status = "File was not created: " + data_path;
             return result;
         }
         
@@ -296,9 +454,16 @@ ExportResult export_gdpdu(Connection& conn, const std::string& export_path, cons
         }
         
         // Save index.xml
-        std::string index_path = join_path(norm_path, "index.xml");
+        std::string index_path = join_path(abs_path, "index.xml");
         if (!doc.save_file(index_path.c_str())) {
-            result.status = "Failed to write index.xml";
+            result.status = "Failed to write index.xml to: " + index_path;
+            return result;
+        }
+        
+        // Verify index.xml was created
+        struct stat index_info;
+        if (stat(index_path.c_str(), &index_info) != 0) {
+            result.status = "index.xml was not created: " + index_path;
             return result;
         }
         

@@ -3,7 +3,13 @@
 #include <algorithm>
 #include <cctype>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <fileapi.h>
+#else
 #include <dirent.h>
+#endif
 
 namespace duckdb {
 
@@ -224,31 +230,62 @@ static std::string get_read_options(const std::string& file_type) {
 static std::vector<std::string> get_matching_files(const std::string& folder_path, const std::string& file_type) {
     std::vector<std::string> files;
     
-    DIR* dir = opendir(folder_path.c_str());
-    if (!dir) {
-        return files;
-    }
-    
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string filename = entry->d_name;
+    #ifdef _WIN32
+        // Windows implementation using FindFirstFile/FindNextFile
+        std::string search_path = join_path(folder_path, "*");
+        WIN32_FIND_DATAA find_data;
+        HANDLE find_handle = FindFirstFileA(search_path.c_str(), &find_data);
         
-        // Skip hidden files and directories
-        if (filename[0] == '.' || filename == ".." || filename == ".") {
-            continue;
+        if (find_handle == INVALID_HANDLE_VALUE) {
+            return files;
         }
         
-        // Check if it's a regular file
-        std::string full_path = join_path(folder_path, filename);
-        struct stat st;
-        if (stat(full_path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
-            if (matches_file_type(filename, file_type)) {
-                files.push_back(filename);
+        do {
+            std::string filename = find_data.cFileName;
+            
+            // Skip hidden files and directories
+            if (filename[0] == '.' || filename == ".." || filename == ".") {
+                continue;
+            }
+            
+            // Check if it's a regular file (not a directory)
+            if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                if (matches_file_type(filename, file_type)) {
+                    files.push_back(filename);
+                }
+            }
+        } while (FindNextFileA(find_handle, &find_data) != 0);
+        
+        FindClose(find_handle);
+    #else
+        // Unix/Linux/macOS implementation using opendir/readdir
+        DIR* dir = opendir(folder_path.c_str());
+        if (!dir) {
+            return files;
+        }
+        
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            std::string filename = entry->d_name;
+            
+            // Skip hidden files and directories
+            if (filename[0] == '.' || filename == ".." || filename == ".") {
+                continue;
+            }
+            
+            // Check if it's a regular file
+            std::string full_path = join_path(folder_path, filename);
+            struct stat st;
+            if (stat(full_path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
+                if (matches_file_type(filename, file_type)) {
+                    files.push_back(filename);
+                }
             }
         }
-    }
+        
+        closedir(dir);
+    #endif
     
-    closedir(dir);
     return files;
 }
 
