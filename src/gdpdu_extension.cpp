@@ -22,7 +22,7 @@ struct GdpduImportGlobalState : public GlobalTableFunctionState {
     std::vector<ImportResult> results;
     idx_t current_row;
     bool done;
-    
+
     GdpduImportGlobalState() : current_row(0), done(false) {}
 };
 
@@ -34,27 +34,27 @@ static unique_ptr<FunctionData> GdpduImportBind(
     vector<string> &names
 ) {
     auto bind_data = make_uniq<GdpduImportBindData>();
-    
+
     // Get directory path argument (required)
     bind_data->directory_path = input.inputs[0].GetValue<string>();
-    
+
     // Get column_name_field argument (optional, defaults to "Name")
     if (input.inputs.size() > 1 && !input.inputs[1].IsNull()) {
         bind_data->column_name_field = input.inputs[1].GetValue<string>();
     } else {
         bind_data->column_name_field = "Name";
     }
-    
+
     // Define return columns
     return_types.push_back(LogicalType::VARCHAR);  // table_name
     names.push_back("table_name");
-    
+
     return_types.push_back(LogicalType::BIGINT);   // row_count
     names.push_back("row_count");
-    
+
     return_types.push_back(LogicalType::VARCHAR);  // status
     names.push_back("status");
-    
+
     return std::move(bind_data);
 }
 
@@ -64,18 +64,18 @@ static unique_ptr<GlobalTableFunctionState> GdpduImportInit(
     TableFunctionInitInput &input
 ) {
     auto state = make_uniq<GdpduImportGlobalState>();
-    
+
     // Get bind data
     auto &bind_data = input.bind_data->Cast<GdpduImportBindData>();
-    
+
     // Create connection and run import
     auto &db = DatabaseInstance::GetDatabase(context);
     Connection conn(db);
-    
+
     state->results = import_gdpdu_navision(conn, bind_data.directory_path, bind_data.column_name_field);
     state->current_row = 0;
     state->done = state->results.empty();
-    
+
     return std::move(state);
 }
 
@@ -86,34 +86,34 @@ static void GdpduImportScan(
     DataChunk &output
 ) {
     auto &state = data.global_state->Cast<GdpduImportGlobalState>();
-    
+
     if (state.done) {
         return;
     }
-    
+
     idx_t count = 0;
     idx_t max_count = STANDARD_VECTOR_SIZE;
-    
+
     while (state.current_row < state.results.size() && count < max_count) {
         auto &result = state.results[state.current_row];
-        
+
         output.SetValue(0, count, Value(result.table_name));
         output.SetValue(1, count, Value(result.row_count));
         output.SetValue(2, count, Value(result.status));
-        
+
         state.current_row++;
         count++;
     }
-    
+
     output.SetCardinality(count);
-    
+
     if (state.current_row >= state.results.size()) {
         state.done = true;
     }
 }
 
-// Extension class implementation for DuckDB 1.4+
-void GdpduExtension::Load(ExtensionLoader &loader) {
+// Standalone load function following DuckDB extension pattern
+static void LoadInternal(ExtensionLoader &loader) {
     // Create table function set to support both:
     // - import_gdpdu_navision('path')                           -> uses "Name" for column names
     // - import_gdpdu_navision('path', 'Description')            -> uses "Description" for column names
@@ -143,6 +143,11 @@ void GdpduExtension::Load(ExtensionLoader &loader) {
     loader.RegisterFunction(gdpdu_import_set);
 }
 
+// Extension class implementation for DuckDB 1.4+
+void GdpduExtension::Load(ExtensionLoader &loader) {
+    LoadInternal(loader);
+}
+
 std::string GdpduExtension::Name() {
     return "gdpdu";
 }
@@ -160,7 +165,6 @@ std::string GdpduExtension::Version() const {
 // Entry point for the loadable extension using DuckDB 1.4+ CPP extension API
 extern "C" {
 DUCKDB_CPP_EXTENSION_ENTRY(gdpdu, loader) {
-    duckdb::GdpduExtension ext;
-    ext.Load(loader);
+    duckdb::LoadInternal(loader);
 }
 }
