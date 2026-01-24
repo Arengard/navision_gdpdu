@@ -56,15 +56,23 @@ jobs:
           # Create distribution directory
           mkdir -p dist
 
-          # Find the extension file
-          EXTENSION_FILE=$(find build -name "*.duckdb_extension" -type f | head -1)
+          # Find the gdpdu extension file specifically
+          EXTENSION_FILE=$(find build -name "gdpdu.duckdb_extension" -type f | head -1)
 
           if [ -z "$EXTENSION_FILE" ]; then
-            echo "❌ No extension file found for packaging"
+            echo "❌ No gdpdu.duckdb_extension file found for packaging"
+            echo "Searching for all extension files:"
+            find build -name "*.duckdb_extension" -type f || true
             exit 1
           fi
 
           echo "✅ Found extension file: $EXTENSION_FILE"
+          
+          # Verify it contains the expected entrypoint (on Windows, use dumpbin if available)
+          if command -v nm >/dev/null 2>&1; then
+            echo "Checking for entrypoint symbol:"
+            nm -g "$EXTENSION_FILE" | grep -i "gdpdu_duckdb_cpp_init" || echo "⚠️  Warning: Entrypoint symbol not found"
+          fi
 
           # Copy to dist with standard name
           cp "$EXTENSION_FILE" dist/gdpdu.duckdb_extension
