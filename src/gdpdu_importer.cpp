@@ -333,4 +333,11 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
     return results;
 }
 
+std::vector<ImportResult> import_gdpdu_datev(Connection& conn, const std::string& directory_path) {
+    // DATEV GDPdU format uses "Name" element for column names (standard GDPdU)
+    // The underlying format is the same as Navision GDPdU, just with different
+    // naming conventions (DATEV uses Name, Navision often uses Description)
+    return import_gdpdu_navision(conn, directory_path, "Name");
+}
+
 } // namespace duckdb

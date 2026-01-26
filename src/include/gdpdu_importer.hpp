@@ -25,4 +25,14 @@ struct ImportResult {
 // column_name_field: "Name" (default) or "Description" - which XML element to use for column names
 std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::string& directory_path, const std::string& column_name_field = "Name");
 
+// Import DATEV GDPdU data from a directory
+// Similar to import_gdpdu_navision but optimized for DATEV export format:
+// - Uses "Name" element for column names (DATEV standard)
+// - Handles DATEV-specific CSV files
+// 1. Parses index.xml
+// 2. Creates tables in DuckDB
+// 3. Loads data from .csv files
+// Returns vector of results for each table
+std::vector<ImportResult> import_gdpdu_datev(Connection& conn, const std::string& directory_path);
+
 } // namespace duckdb

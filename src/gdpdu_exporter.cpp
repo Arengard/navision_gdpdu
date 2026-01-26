@@ -14,6 +14,13 @@
 #include <windows.h>
 #define mkdir _mkdir
 #define realpath(N,R) _fullpath((R),(N),_MAX_PATH)
+// Windows/MSVC compatibility
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & _S_IFDIR) != 0)
+#endif
+#ifndef PATH_MAX
+#define PATH_MAX _MAX_PATH
+#endif
 #else
 #include <sys/stat.h>
 #include <sys/types.h>

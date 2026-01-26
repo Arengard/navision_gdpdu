@@ -271,7 +271,59 @@ static void LoadInternal(ExtensionLoader &loader) {
 
     // Register with the extension loader
     loader.RegisterFunction(gdpdu_import_set);
-    
+
+    // Create table function for DATEV GDPdU import
+    // DATEV uses standard GDPdU format with "Name" element for column names
+    TableFunctionSet gdpdu_datev_import_set("import_gdpdu_datev");
+
+    // Bind function for DATEV import (only directory_path argument)
+    auto GdpduDatevImportBind = [](ClientContext &context,
+                                   TableFunctionBindInput &input,
+                                   vector<LogicalType> &return_types,
+                                   vector<string> &names) -> unique_ptr<FunctionData> {
+        auto bind_data = make_uniq<GdpduImportBindData>();
+        bind_data->directory_path = input.inputs[0].GetValue<string>();
+        bind_data->column_name_field = "Name";  // DATEV uses Name element
+
+        // Define return columns
+        return_types.push_back(LogicalType::VARCHAR);  // table_name
+        names.push_back("table_name");
+        return_types.push_back(LogicalType::BIGINT);   // row_count
+        names.push_back("row_count");
+        return_types.push_back(LogicalType::VARCHAR);  // status
+        names.push_back("status");
+
+        return std::move(bind_data);
+    };
+
+    // Init function for DATEV import
+    auto GdpduDatevImportInit = [](ClientContext &context,
+                                   TableFunctionInitInput &input) -> unique_ptr<GlobalTableFunctionState> {
+        auto state = make_uniq<GdpduImportGlobalState>();
+        auto &bind_data = input.bind_data->Cast<GdpduImportBindData>();
+        auto &db = DatabaseInstance::GetDatabase(context);
+        Connection conn(db);
+
+        state->results = import_gdpdu_datev(conn, bind_data.directory_path);
+        state->current_row = 0;
+        state->done = state->results.empty();
+
+        return std::move(state);
+    };
+
+    // Single argument version (directory_path only)
+    TableFunction gdpdu_datev_import_func(
+        "import_gdpdu_datev",
+        {LogicalType::VARCHAR},
+        GdpduImportScan,  // Reuse the same scan function
+        GdpduDatevImportBind,
+        GdpduDatevImportInit
+    );
+    gdpdu_datev_import_set.AddFunction(gdpdu_datev_import_func);
+
+    // Register with the extension loader
+    loader.RegisterFunction(gdpdu_datev_import_set);
+
     // Register generic import_xml_data function
     TableFunctionSet xml_import_set("import_xml_data");
     
