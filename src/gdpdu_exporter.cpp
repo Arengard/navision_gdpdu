@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <fstream>
 #include <sys/stat.h>
-#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
 #include <cstdlib>
