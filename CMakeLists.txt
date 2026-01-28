@@ -11,7 +11,7 @@ include(FetchContent)
 FetchContent_Declare(
     duckdb
     GIT_REPOSITORY https://github.com/duckdb/duckdb.git
-    GIT_TAG        v1.4.3
+    GIT_TAG        v1.4.4
     GIT_SHALLOW    TRUE
 )
 
