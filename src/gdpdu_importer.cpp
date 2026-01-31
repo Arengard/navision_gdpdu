@@ -197,7 +197,8 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
             "utf-16"                   // UTF-16 lowercase
         };
         bool success = false;
-        
+        std::string load_error;
+
         for (const auto& encoding : encodings_to_try) {
             std::ostringstream sql;
             sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
@@ -215,14 +216,14 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
                 sql << "skip=" << table.skip_lines << ", ";
             }
             sql << "columns={";
-            
+
             // Define expected columns with explicit names
             for (size_t j = 0; j < table.columns.size(); ++j) {
                 if (j > 0) sql << ", ";
                 sql << "'column" << j << "': 'VARCHAR'";
             }
             sql << "})";
-            
+
             try {
                 auto query_result = conn.Query(sql.str());
                 if (!query_result->HasError()) {
@@ -231,90 +232,80 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
                 }
                 // If error contains encoding info, try next encoding
                 std::string error = query_result->GetError();
-                if (error.find("unicode") != std::string::npos || 
+                if (error.find("unicode") != std::string::npos ||
                     error.find("encoding") != std::string::npos ||
                     error.find("utf-8") != std::string::npos) {
                     continue;  // Try next encoding
                 }
-                // Other error, break and report
-                result.row_count = 0;
-                result.status = "Load failed: " + error;
-                results.push_back(result);
-                success = false;
+                // Other error, stop trying
+                load_error = error;
                 break;
             } catch (const std::exception& e) {
                 std::string error = e.what();
-                if (error.find("unicode") != std::string::npos || 
+                if (error.find("unicode") != std::string::npos ||
                     error.find("encoding") != std::string::npos) {
                     continue;  // Try next encoding
                 }
                 // Other error
-                result.row_count = 0;
-                result.status = std::string("Load failed: ") + e.what();
-                results.push_back(result);
-                success = false;
+                load_error = error;
                 break;
             }
         }
-        
-            // If all encodings failed, try with ignore_errors as last resort
-            // Try a few more encodings with ignore_errors enabled
-            if (!success) {
-                std::vector<std::string> fallback_encodings = {
-                    "ISO-8859-1", "Windows-1252", "CP1252", "UTF-8", "CP850"
-                };
-                
-                for (const auto& encoding : fallback_encodings) {
-                    std::ostringstream sql;
-                    sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
-                    sql << "SELECT " << build_select_clause(table) << " ";
-                    sql << "FROM read_csv('" << escape_sql(data_path) << "', ";
-                    sql << "delim=';', ";
-                    sql << "header=false, ";
-                    sql << "quote='\"', ";
-                    sql << "all_varchar=true, ";
-                    sql << "auto_detect=false, ";
-                    sql << "strict_mode=false, ";
-                    sql << "null_padding=true, ";
-                    sql << "encoding='" << encoding << "', ";
-                    sql << "ignore_errors=true, ";
-                    if (table.skip_lines > 0) {
-                        sql << "skip=" << table.skip_lines << ", ";
-                    }
-                    sql << "columns={";
-                    
-                    for (size_t j = 0; j < table.columns.size(); ++j) {
-                        if (j > 0) sql << ", ";
-                        sql << "'column" << j << "': 'VARCHAR'";
-                    }
-                    sql << "})";
-                    
-                    try {
-                        auto query_result = conn.Query(sql.str());
-                        if (!query_result->HasError()) {
-                            success = true;
-                            break;
-                        }
-                    } catch (const std::exception& e) {
-                        // Try next encoding
-                        continue;
-                    }
+
+        // If all encodings failed, try with ignore_errors as last resort
+        if (!success) {
+            std::vector<std::string> fallback_encodings = {
+                "ISO-8859-1", "Windows-1252", "CP1252", "UTF-8", "CP850"
+            };
+
+            for (const auto& encoding : fallback_encodings) {
+                std::ostringstream sql;
+                sql << "INSERT INTO \"" << table.name << "\" (" << build_column_list(table) << ") ";
+                sql << "SELECT " << build_select_clause(table) << " ";
+                sql << "FROM read_csv('" << escape_sql(data_path) << "', ";
+                sql << "delim=';', ";
+                sql << "header=false, ";
+                sql << "quote='\"', ";
+                sql << "all_varchar=true, ";
+                sql << "auto_detect=false, ";
+                sql << "strict_mode=false, ";
+                sql << "null_padding=true, ";
+                sql << "encoding='" << encoding << "', ";
+                sql << "ignore_errors=true, ";
+                if (table.skip_lines > 0) {
+                    sql << "skip=" << table.skip_lines << ", ";
                 }
-                
-                if (!success) {
-                    result.row_count = 0;
-                    result.status = "Load failed: Could not read file with any encoding (tried " + 
-                                   std::to_string(encodings_to_try.size() + fallback_encodings.size()) + " encodings)";
-                    results.push_back(result);
+                sql << "columns={";
+
+                for (size_t j = 0; j < table.columns.size(); ++j) {
+                    if (j > 0) sql << ", ";
+                    sql << "'column" << j << "': 'VARCHAR'";
+                }
+                sql << "})";
+
+                try {
+                    auto query_result = conn.Query(sql.str());
+                    if (!query_result->HasError()) {
+                        success = true;
+                        break;
+                    }
+                } catch (const std::exception& e) {
+                    // Try next encoding
                     continue;
                 }
             }
-        
+
+            if (!success && load_error.empty()) {
+                load_error = "Could not read file with any encoding (tried " +
+                             std::to_string(encodings_to_try.size() + fallback_encodings.size()) + " encodings)";
+            }
+        }
+
         if (success) {
             try {
                 // Clean and trim all VARCHAR columns (GDPdU already has proper types from XML)
                 clean_and_trim_columns(conn, table.name);
-                
+
                 // Get row count
                 auto count_result = conn.Query("SELECT COUNT(*) FROM \"" + table.name + "\"");
                 if (!count_result->HasError() && count_result->RowCount() > 0) {
@@ -325,8 +316,17 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
                 result.row_count = 0;
                 result.status = std::string("Load failed: ") + e.what();
             }
+        } else {
+            result.row_count = 0;
+            result.status = "Load failed: " + load_error;
         }
-        
+
+        // Don't keep empty tables in the database
+        if (result.row_count == 0) {
+            conn.Query("DROP TABLE IF EXISTS \"" + table.name + "\"");
+            continue;
+        }
+
         results.push_back(result);
     }
     
