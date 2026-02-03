@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 
 namespace duckdb {
 
@@ -241,16 +242,29 @@ static TableDef parse_table(const pugi::xml_node& table_node, const std::string&
         return table;
     }
     
+    // Track column name occurrences to deduplicate
+    std::unordered_map<std::string, int> col_name_counts;
+
     // Parse VariablePrimaryKey elements first (in document order)
     for (pugi::xml_node pk : var_length.children("VariablePrimaryKey")) {
         ColumnDef col = parse_column(pk, true, column_name_field);
+        int& count = col_name_counts[col.name];
+        count++;
+        if (count > 1) {
+            col.name += "_" + std::to_string(count);
+        }
         table.columns.push_back(col);
         table.primary_key_columns.push_back(col.name);
     }
-    
+
     // Parse VariableColumn elements (in document order)
     for (pugi::xml_node vc : var_length.children("VariableColumn")) {
         ColumnDef col = parse_column(vc, false, column_name_field);
+        int& count = col_name_counts[col.name];
+        count++;
+        if (count > 1) {
+            col.name += "_" + std::to_string(count);
+        }
         table.columns.push_back(col);
     }
     
