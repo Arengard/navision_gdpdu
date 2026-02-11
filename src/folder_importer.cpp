@@ -555,7 +555,8 @@ static void infer_and_convert_types(Connection& conn, const std::string& table_n
 std::vector<FileImportResult> import_folder(
     Connection& conn,
     const std::string& folder_path,
-    const std::string& file_type) {
+    const std::string& file_type,
+    const std::string& options) {
     
     std::vector<FileImportResult> results;
     
@@ -601,16 +602,20 @@ std::vector<FileImportResult> import_folder(
             std::string type_lower = file_type;
             std::transform(type_lower.begin(), type_lower.end(), type_lower.begin(), ::tolower);
             
-            if (type_lower == "xlsx" || type_lower == "excel" || 
+            if (type_lower == "xlsx" || type_lower == "excel" ||
                 type_lower == "parquet" || type_lower == "json" || type_lower == "jsonl") {
-                // For these file types, read directly without encoding or extra options
+                // Build read query with optional user-provided options
                 std::ostringstream read_query;
-                read_query << read_func << "('" << escape_sql(file_path) << "')";
-                
+                read_query << read_func << "('" << escape_sql(file_path) << "'";
+                if (!options.empty()) {
+                    read_query << ", " << options;
+                }
+                read_query << ")";
+
                 // Try to get column names
                 std::string test_query = "SELECT * FROM " + read_query.str() + " LIMIT 0";
                 auto test_result = conn.Query(test_query);
-                
+
                 if (!test_result->HasError()) {
                     // Success! Get column names
                     for (idx_t i = 0; i < test_result->ColumnCount(); ++i) {
@@ -618,6 +623,39 @@ std::vector<FileImportResult> import_folder(
                     }
                     final_read_query = read_query.str();
                     success = true;
+                } else if (type_lower == "xlsx" || type_lower == "excel") {
+                    // For Excel: retry with all_varchar=true if type detection failed
+                    // This handles mixed-type columns (e.g. numbers + "Summen" summary rows)
+                    std::string first_error = test_result->GetError();
+
+                    std::ostringstream retry_query;
+                    retry_query << read_func << "('" << escape_sql(file_path) << "', all_varchar=true";
+                    if (!options.empty()) {
+                        // Append user options but skip if they already set all_varchar
+                        std::string opts_lower = options;
+                        std::transform(opts_lower.begin(), opts_lower.end(), opts_lower.begin(), ::tolower);
+                        if (opts_lower.find("all_varchar") == std::string::npos) {
+                            retry_query << ", " << options;
+                        }
+                    }
+                    retry_query << ")";
+
+                    std::string retry_test = "SELECT * FROM " + retry_query.str() + " LIMIT 0";
+                    auto retry_result = conn.Query(retry_test);
+
+                    if (!retry_result->HasError()) {
+                        for (idx_t i = 0; i < retry_result->ColumnCount(); ++i) {
+                            orig_cols.push_back(retry_result->ColumnName(i));
+                        }
+                        final_read_query = retry_query.str();
+                        success = true;
+                    } else {
+                        result.row_count = 0;
+                        result.column_count = 0;
+                        result.status = "Load failed: " + first_error;
+                        results.push_back(result);
+                        continue;
+                    }
                 } else {
                     result.row_count = 0;
                     result.column_count = 0;
@@ -653,15 +691,21 @@ std::vector<FileImportResult> import_folder(
                     "utf-16"                   // UTF-16 lowercase
                 };
                 
+                // Build extra user options string for CSV
+                std::string extra_opts;
+                if (!options.empty()) {
+                    extra_opts = ", " + options;
+                }
+
                 for (const auto& enc : encodings_to_try) {
                     std::ostringstream read_query;
                     read_query << read_func << "('" << escape_sql(file_path) << "', " << read_opts;
-                    read_query << ", encoding='" << enc << "')";
-                    
+                    read_query << ", encoding='" << enc << "'" << extra_opts << ")";
+
                     // Try to get column names with this encoding
                     std::string test_query = "SELECT * FROM " + read_query.str() + " LIMIT 0";
                     auto test_result = conn.Query(test_query);
-                    
+
                     if (!test_result->HasError()) {
                         // Success! Get column names
                         for (idx_t i = 0; i < test_result->ColumnCount(); ++i) {
@@ -671,28 +715,28 @@ std::vector<FileImportResult> import_folder(
                         success = true;
                         break;
                     }
-                    
+
                     // Check if it's an encoding error
                     std::string error = test_result->GetError();
-                    if (error.find("unicode") == std::string::npos && 
+                    if (error.find("unicode") == std::string::npos &&
                         error.find("encoding") == std::string::npos &&
                         error.find("utf-8") == std::string::npos) {
                         // Not an encoding error, break and report
                         break;
                     }
                 }
-                
+
                 // If all encodings failed, try with ignore_errors as last resort
                 if (!success) {
                     std::vector<std::string> fallback_encodings = {
                         "ISO-8859-1", "Windows-1252", "CP1252", "UTF-8", "CP850"
                     };
-                    
+
                     for (const auto& enc : fallback_encodings) {
                         std::ostringstream read_query;
                         read_query << read_func << "('" << escape_sql(file_path) << "', " << read_opts;
-                        read_query << ", encoding='" << enc << "', ignore_errors=true)";
-                        
+                        read_query << ", encoding='" << enc << "', ignore_errors=true" << extra_opts << ")";
+
                         // Try to get columns even with errors
                         std::string test_query = "SELECT * FROM " + read_query.str() + " LIMIT 0";
                         auto test_result = conn.Query(test_query);

@@ -1,16 +1,14 @@
 # Build Instructions
 
-## Windows Build (Local)
+Do NOT build locally. Instead, commit and push to GitHub — the CI pipeline will handle the build.
+
+## Windows Build (Reference Only)
 
 ```bash
 cd C:\extensions\navision_gdpdu
 mkdir build_x64
 cd build_x64
-
-# Step 2: Run CMake with loadable extension enabled
 cmake .. -DBUILD_LOADABLE_EXTENSION=ON -G "Visual Studio 17 2022" -A x64
-
-# Step 3: Build the project
 cmake --build . --config Release
 ```
 

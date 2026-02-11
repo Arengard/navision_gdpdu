@@ -357,6 +357,7 @@ static void LoadInternal(ExtensionLoader &loader) {
     struct FolderImportBindData : public TableFunctionData {
         std::string folder_path;
         std::string file_type;
+        std::string options;
     };
     
     // Global state for folder import
@@ -383,6 +384,13 @@ static void LoadInternal(ExtensionLoader &loader) {
             bind_data->file_type = input.inputs[1].GetValue<string>();
         } else {
             bind_data->file_type = "csv";
+        }
+
+        // Get options argument (optional, defaults to "")
+        if (input.inputs.size() > 2 && !input.inputs[2].IsNull()) {
+            bind_data->options = input.inputs[2].GetValue<string>();
+        } else {
+            bind_data->options = "";
         }
         
         // Define return columns
@@ -416,7 +424,7 @@ static void LoadInternal(ExtensionLoader &loader) {
         auto &db = DatabaseInstance::GetDatabase(context);
         Connection conn(db);
         
-        state->results = import_folder(conn, bind_data.folder_path, bind_data.file_type);
+        state->results = import_folder(conn, bind_data.folder_path, bind_data.file_type, bind_data.options);
         state->current_row = 0;
         state->done = state->results.empty();
         
@@ -475,7 +483,17 @@ static void LoadInternal(ExtensionLoader &loader) {
         FolderImportInit
     );
     folder_import_set.AddFunction(folder_import_2args);
-    
+
+    // Three argument version (folder_path, file_type, options)
+    TableFunction folder_import_3args(
+        "import_folder",
+        {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+        FolderImportScan,
+        FolderImportBind,
+        FolderImportInit
+    );
+    folder_import_set.AddFunction(folder_import_3args);
+
     // Register with the extension loader
     loader.RegisterFunction(folder_import_set);
     

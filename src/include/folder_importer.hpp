@@ -18,10 +18,13 @@ struct FileImportResult {
 };
 
 // Import all files from a folder
+// options: optional DuckDB read options passed through to the reader
+//   e.g. "all_varchar=true" for xlsx, "delimiter=';'" for csv
 std::vector<FileImportResult> import_folder(
     Connection& conn,
     const std::string& folder_path,
-    const std::string& file_type = "csv"
+    const std::string& file_type = "csv",
+    const std::string& options = ""
 );
 
 } // namespace duckdb
