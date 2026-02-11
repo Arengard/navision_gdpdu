@@ -226,36 +226,60 @@ static std::string get_read_options(const std::string& file_type) {
     return opts.str();
 }
 
+// Convert UTF-8 string to wide string (Windows)
+#ifdef _WIN32
+static std::wstring utf8_to_wide(const std::string& utf8) {
+    if (utf8.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), NULL, 0);
+    if (size_needed <= 0) return std::wstring();
+    std::wstring result(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), &result[0], size_needed);
+    return result;
+}
+
+// Convert wide string to UTF-8 string (Windows)
+static std::string wide_to_utf8(const std::wstring& wide) {
+    if (wide.empty()) return std::string();
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), (int)wide.size(), NULL, 0, NULL, NULL);
+    if (size_needed <= 0) return std::string();
+    std::string result(size_needed, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), (int)wide.size(), &result[0], size_needed, NULL, NULL);
+    return result;
+}
+#endif
+
 // Get list of files in directory matching the file type
 static std::vector<std::string> get_matching_files(const std::string& folder_path, const std::string& file_type) {
     std::vector<std::string> files;
-    
+
     #ifdef _WIN32
-        // Windows implementation using FindFirstFile/FindNextFile
+        // Windows implementation using wide-char FindFirstFileW/FindNextFileW
+        // to properly handle UTF-8 paths with non-ASCII characters (e.g. umlauts)
         std::string search_path = join_path(folder_path, "*");
-        WIN32_FIND_DATAA find_data;
-        HANDLE find_handle = FindFirstFileA(search_path.c_str(), &find_data);
-        
+        std::wstring wide_search = utf8_to_wide(search_path);
+        WIN32_FIND_DATAW find_data;
+        HANDLE find_handle = FindFirstFileW(wide_search.c_str(), &find_data);
+
         if (find_handle == INVALID_HANDLE_VALUE) {
             return files;
         }
-        
+
         do {
-            std::string filename = find_data.cFileName;
-            
+            std::string filename = wide_to_utf8(find_data.cFileName);
+
             // Skip hidden files and directories
-            if (filename[0] == '.' || filename == ".." || filename == ".") {
+            if (filename.empty() || filename[0] == '.' || filename == ".." || filename == ".") {
                 continue;
             }
-            
+
             // Check if it's a regular file (not a directory)
             if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
                 if (matches_file_type(filename, file_type)) {
                     files.push_back(filename);
                 }
             }
-        } while (FindNextFileA(find_handle, &find_data) != 0);
-        
+        } while (FindNextFileW(find_handle, &find_data) != 0);
+
         FindClose(find_handle);
     #else
         // Unix/Linux/macOS implementation using opendir/readdir
