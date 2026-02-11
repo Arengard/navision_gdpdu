@@ -175,6 +175,10 @@ SELECT * FROM import_folder('/path/to/folder/', 'parquet');
 
 -- Import all Excel files
 SELECT * FROM import_folder('/path/to/folder/', 'xlsx');
+
+-- Import with DuckDB read options (3rd argument)
+SELECT * FROM import_folder('/path/to/folder/', 'xlsx', 'all_varchar=true');
+SELECT * FROM import_folder('/path/to/folder/', 'csv', 'delimiter='';''');
 ```
 
 ### Supported File Types
@@ -232,13 +236,35 @@ SELECT * FROM sales_data LIMIT 10;
 SELECT * FROM customers WHERE country = 'Germany';
 ```
 
+### Read Options (3rd Argument)
+
+You can pass DuckDB read options as the 3rd argument. These are passed directly to the underlying read function (`read_xlsx`, `read_csv`, `read_parquet`, etc.):
+
+```sql
+-- Force all columns as text for Excel files with mixed types
+SELECT * FROM import_folder('/path/', 'xlsx', 'all_varchar=true');
+
+-- Specify sheet name for Excel
+SELECT * FROM import_folder('/path/', 'xlsx', 'sheet=''Sheet2''');
+
+-- Custom CSV delimiter
+SELECT * FROM import_folder('/path/', 'csv', 'delimiter='';''');
+
+-- JSON options
+SELECT * FROM import_folder('/path/', 'json', 'format=''array''');
+```
+
+**Excel auto-fallback**: When Excel files fail to read due to mixed-type columns (e.g., a numeric column containing summary text like "Summen"), the extension automatically retries with `all_varchar=true`. This means most Excel files work without any options.
+
 ### Features
 
 - **Automatic file detection**: Scans the folder and imports all matching files
 - **Auto-type detection**: Uses DuckDB's native auto-detection for data types
+- **Excel auto-fallback**: Retries with `all_varchar=true` when Excel type detection fails on mixed-type columns
 - **Header support**: Automatically detects and uses headers when present
 - **Error handling**: Continues importing other files even if one fails
 - **Table replacement**: Drops existing tables before importing (idempotent)
+- **Pass-through options**: Optional 3rd argument for DuckDB-native read options
 
 ### Use Cases
 
@@ -429,6 +455,7 @@ New parsers can be added by:
 | `import_xml_data(path, parser)` | Configurable | Custom XML formats |
 | `import_folder(path)` | N/A | Import all CSV files from folder |
 | `import_folder(path, file_type)` | N/A | Import all files of specified type from folder |
+| `import_folder(path, file_type, options)` | N/A | Import with DuckDB read options passed through |
 | `export_gdpdu(path, table_name)` | N/A | Export table to GDPdU format |
 
 ## License
