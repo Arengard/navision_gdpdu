@@ -16,6 +16,7 @@ set(EXTENSION_SOURCES
     gdpdu_xml_parser.cpp
     generic_xml_importer.cpp
     folder_importer.cpp
+    webdav_client.cpp
 )
 
 build_static_extension(gdpdu ${EXTENSION_SOURCES})
