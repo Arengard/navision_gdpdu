@@ -111,21 +111,21 @@ Which phases cover which requirements. Updated by create-roadmap.
 | EXT-02 | Phase 5 | Complete |
 | EXT-03 | Phase 1 | Complete |
 | EXT-04 | Phase 5 | Complete |
-| NET-01 | TBD | Pending |
-| NET-02 | TBD | Pending |
-| NET-03 | TBD | Pending |
-| ZIP-01 | TBD | Pending |
-| ZIP-02 | TBD | Pending |
-| BATCH-01 | TBD | Pending |
-| BATCH-02 | TBD | Pending |
-| BATCH-03 | TBD | Pending |
-| BATCH-04 | TBD | Pending |
+| NET-01 | Phase 6 | Pending |
+| NET-02 | Phase 6 | Pending |
+| NET-03 | Phase 6 | Pending |
+| ZIP-01 | Phase 7 | Pending |
+| ZIP-02 | Phase 7 | Pending |
+| BATCH-01 | Phase 8 | Pending |
+| BATCH-02 | Phase 8 | Pending |
+| BATCH-03 | Phase 8 | Pending |
+| BATCH-04 | Phase 8 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 21 total — 21 complete
-- v1.1 requirements: 9 total — 0 complete
-- Unmapped: 9 (awaiting roadmap)
+- v1.1 requirements: 9 total — 9 mapped to phases
+- Unmapped: 0 (100% coverage)
 
 ---
 *Requirements defined: 2026-01-22*
-*Last updated: 2026-02-12 after milestone v1.1 requirements*
+*Last updated: 2026-02-12 after v1.1 roadmap creation*
