@@ -97,8 +97,10 @@ Build a DuckDB C++ extension that reads German tax audit (GDPdU) exports with a 
   2. Extension lists all `.zip` files from a specified WebDAV folder URL
   3. Extension downloads zip files to a temporary directory
   4. Network errors are caught and reported clearly
-**Research**: TBD
-**Plans**: TBD
+**Research**: Not needed (using DuckDB's bundled cpp-httplib + existing pugixml)
+**Plans**: 1 plan
+Plans:
+- [ ] 06-01-PLAN.md -- WebDAV client module (auth, PROPFIND listing, GET download, temp dir management)
 
 ### Phase 7: Zip Extraction
 **Goal**: Extract GDPdU exports from downloaded zips with cleanup
@@ -137,7 +139,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 3. Table Creation | 1/1 | Complete | 2026-01-22 |
 | 4. Data Parser | 1/1 | Complete | 2026-01-22 |
 | 5. Integration | 1/1 | Complete | 2026-01-22 |
-| 6. WebDAV Client | 0/0 | Not Started | — |
+| 6. WebDAV Client | 0/1 | Planned | — |
 | 7. Zip Extraction | 0/0 | Not Started | — |
 | 8. Batch Import Integration | 0/0 | Not Started | — |
 
