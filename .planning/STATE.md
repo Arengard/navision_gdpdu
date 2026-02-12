@@ -2,40 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-22)
+See: .planning/PROJECT.md (updated 2026-02-12)
 
 **Core value:** Read any valid GDPdU export into DuckDB with a single function call — no manual schema definition or data wrangling required.
-**Current focus:** Complete — All phases finished
+**Current focus:** Milestone v1.1 — Nextcloud Batch Import
 
 ## Current Position
 
-Phase: 5 of 5 (Integration) — COMPLETE
-Plan: All phases complete
-Status: v1 milestone complete
-Last activity: 2026-01-22 — gdpdu_import table function implemented
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-12 — Milestone v1.1 started
 
-Progress: ██████████ 100%
-
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 6
-- Average duration: ~20 min
-- Total execution time: ~2 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1. Foundation | 1 | ~30 min | ~30 min |
-| 2. XML Parser | 2 | ~30 min | ~15 min |
-| 3. Table Creation | 1 | ~30 min | ~30 min |
-| 4. Data Parser | 1 | ~15 min | ~15 min |
-| 5. Integration | 1 | ~15 min | ~15 min |
-
-**Recent Trend:**
-- Last 5 plans: 02-01, 02-02, 03-01, 04-01, 05-01
-- Trend: Complete
+Progress: ░░░░░░░░░░ 0%
 
 ## Accumulated Context
 
@@ -51,6 +30,8 @@ Recent decisions affecting current work:
 | pugixml for XML | Simple DOM API, handles GDPdU DTD gracefully |
 | Batch INSERT 1000 rows | Balances memory use vs. SQL statement size |
 | Type-aware quoting | Numeric values unquoted, strings/dates quoted |
+| Separate function for Nextcloud | Keeps local and cloud import concerns separate |
+| Zip-name prefix for tables | Avoids collisions when importing multiple exports |
 
 ### Pending Todos
 
@@ -60,9 +41,10 @@ None.
 
 - Extension requires `-unsigned` flag to load (expected for unsigned extensions)
 - Large data files (>200MB) may cause timeout in testing environments
+- WebDAV/HTTP library choice TBD — needs to work in DuckDB extension context
 
 ## Session Continuity
 
-Last session: 2026-01-22
-Stopped at: All phases complete
+Last session: 2026-02-12
+Stopped at: Defining requirements for v1.1
 Resume file: None
