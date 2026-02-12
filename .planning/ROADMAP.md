@@ -110,8 +110,9 @@ Build a DuckDB C++ extension that reads German tax audit (GDPdU) exports with a 
   2. Extracted files are accessible for import processing
   3. Temporary files are cleaned up after import completes (success or failure)
   4. Extraction errors are caught and reported
-**Research**: TBD
-**Plans**: TBD
+**Research**: Not needed (using DuckDB's bundled miniz library for ZIP archive operations)
+**Plans**: 1 plan
+  - [ ] 07-01-PLAN.md — Zip extractor module with miniz (extract_zip, cleanup_extract_dir, build integration)
 
 ### Phase 8: Batch Import Integration
 **Goal**: Wire batch import with table name prefixing and resilient processing
