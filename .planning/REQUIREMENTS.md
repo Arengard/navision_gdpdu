@@ -3,9 +3,7 @@
 **Defined:** 2026-01-22
 **Core Value:** Read any valid GDPdU export into DuckDB with a single function call — no manual schema definition or data wrangling required.
 
-## v1 Requirements
-
-Requirements for initial release. Each maps to roadmap phases.
+## v1.0 Requirements (Complete)
 
 ### Core Import
 
@@ -40,6 +38,28 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **EXT-03**: Extension can be loaded via `LOAD 'gdpdu'`
 - [x] **EXT-04**: Windows file paths (backslashes) are handled correctly
 
+## v1.1 Requirements
+
+Requirements for Nextcloud Batch Import milestone.
+
+### Networking
+
+- [ ] **NET-01**: User can connect to Nextcloud via WebDAV using username and password
+- [ ] **NET-02**: Extension lists all `.zip` files in a specified Nextcloud WebDAV folder
+- [ ] **NET-03**: Extension downloads zip files from Nextcloud to a temp directory
+
+### Zip Handling
+
+- [ ] **ZIP-01**: Extension extracts GDPdU export (index.xml + .txt files) from a downloaded zip
+- [ ] **ZIP-02**: Temporary files are cleaned up after import completes
+
+### Batch Import
+
+- [ ] **BATCH-01**: User can call `gdpdu_import_nextcloud(url, user, pass)` table function
+- [ ] **BATCH-02**: Table names are prefixed with sanitized zip filename (e.g. `export2024_Buchungen`)
+- [ ] **BATCH-03**: Failed zip files are skipped and remaining zips continue importing
+- [ ] **BATCH-04**: Result set includes table name, row count, status, and source zip filename
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -47,7 +67,6 @@ Deferred to future release. Tracked but not in current roadmap.
 ### Advanced Features
 
 - **ADV-01**: Support for fixed-length record format (alternative to VariableLength)
-- **ADV-02**: Support for reading from ZIP archives
 - **ADV-03**: Incremental import (only new/changed records)
 - **ADV-04**: Schema-qualified table names (`gdpdu.Sachposten`)
 
@@ -61,6 +80,9 @@ Explicitly excluded. Documented to prevent scope creep.
 | Non-file media types | GDPdU spec allows CD/DVD references, we assume filesystem |
 | Data validation | Extension imports as-is, validation is user's responsibility |
 | GUI/CLI wrapper | Extension only, tooling built separately if needed |
+| Nextcloud OAuth/SSO | WebDAV with username+password or app tokens is sufficient |
+| Recursive folder traversal | Only list zips in the specified folder |
+| Streaming zip extraction | Download fully then extract (simpler, reliable) |
 
 ## Traceability
 
@@ -89,12 +111,21 @@ Which phases cover which requirements. Updated by create-roadmap.
 | EXT-02 | Phase 5 | Complete |
 | EXT-03 | Phase 1 | Complete |
 | EXT-04 | Phase 5 | Complete |
+| NET-01 | TBD | Pending |
+| NET-02 | TBD | Pending |
+| NET-03 | TBD | Pending |
+| ZIP-01 | TBD | Pending |
+| ZIP-02 | TBD | Pending |
+| BATCH-01 | TBD | Pending |
+| BATCH-02 | TBD | Pending |
+| BATCH-03 | TBD | Pending |
+| BATCH-04 | TBD | Pending |
 
 **Coverage:**
-- v1 requirements: 21 total
-- Mapped to phases: 21
-- Unmapped: 0 ✓
+- v1.0 requirements: 21 total — 21 complete
+- v1.1 requirements: 9 total — 0 complete
+- Unmapped: 9 (awaiting roadmap)
 
 ---
 *Requirements defined: 2026-01-22*
-*Last updated: 2026-01-22 after roadmap creation*
+*Last updated: 2026-02-12 after milestone v1.1 requirements*
