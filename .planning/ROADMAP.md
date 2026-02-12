@@ -19,7 +19,7 @@ Build a DuckDB C++ extension that reads German tax audit (GDPdU) exports with a 
 
 ### v1.1 - Nextcloud Batch Import
 - [x] **Phase 6: WebDAV Client** - Connect to Nextcloud and download zip files
-- [ ] **Phase 7: Zip Extraction** - Extract GDPdU exports from downloaded zips
+- [x] **Phase 7: Zip Extraction** - Extract GDPdU exports from downloaded zips
 - [ ] **Phase 8: Batch Import Integration** - Wire batch import with table name prefixing
 
 ## Phase Details
@@ -111,8 +111,8 @@ Build a DuckDB C++ extension that reads German tax audit (GDPdU) exports with a 
   3. Temporary files are cleaned up after import completes (success or failure)
   4. Extraction errors are caught and reported
 **Research**: Not needed (using DuckDB's bundled miniz library for ZIP archive operations)
-**Plans**: 1 plan
-  - [ ] 07-01-PLAN.md — Zip extractor module with miniz (extract_zip, cleanup_extract_dir, build integration)
+**Plans**: 1/1 complete
+  - 07-01: Zip extractor module with miniz (extract_zip, cleanup_extract_dir, build integration)
 
 ### Phase 8: Batch Import Integration
 **Goal**: Wire batch import with table name prefixing and resilient processing
@@ -140,7 +140,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Data Parser | 1/1 | Complete | 2026-01-22 |
 | 5. Integration | 1/1 | Complete | 2026-01-22 |
 | 6. WebDAV Client | 1/1 | Complete | 2026-02-12 |
-| 7. Zip Extraction | 0/0 | Not Started | — |
+| 7. Zip Extraction | 1/1 | Complete | 2026-02-12 |
 | 8. Batch Import Integration | 0/0 | Not Started | — |
 
-**Overall Progress:** ███████░░░ 75% (6/8 phases complete)
+**Overall Progress:** ████████░░ 88% (7/8 phases complete)
