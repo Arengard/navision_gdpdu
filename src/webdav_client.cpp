@@ -153,7 +153,7 @@ WebDavResult WebDavClient::list_files(bool filter_zips) {
 
     try {
         // Create HTTP client
-        duckdb_httplib::Client client(proto_host_port_.c_str());
+        CPPHTTPLIB_NAMESPACE::Client client(proto_host_port_.c_str());
 
         // Configure SSL and timeouts
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
@@ -164,7 +164,7 @@ WebDavResult WebDavClient::list_files(bool filter_zips) {
         client.set_write_timeout(30, 0);
 
         // Build PROPFIND request
-        duckdb_httplib::Request req;
+        CPPHTTPLIB_NAMESPACE::Request req;
         req.method = "PROPFIND";
         req.path = base_path_;
         req.set_header("Authorization", make_auth_header().c_str());
@@ -307,7 +307,7 @@ WebDavDownloadResult WebDavClient::download_file(const std::string& href, const 
 
     try {
         // Create HTTP client
-        duckdb_httplib::Client client(proto_host_port_.c_str());
+        CPPHTTPLIB_NAMESPACE::Client client(proto_host_port_.c_str());
 
         // Configure SSL and timeouts
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
@@ -318,7 +318,7 @@ WebDavDownloadResult WebDavClient::download_file(const std::string& href, const 
         client.set_write_timeout(30, 0);
 
         // Prepare headers
-        duckdb_httplib::Headers headers = {
+        CPPHTTPLIB_NAMESPACE::Headers headers = {
             {"Authorization", make_auth_header()}
         };
 
