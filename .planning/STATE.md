@@ -2,61 +2,38 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-12)
+See: .planning/PROJECT.md (updated 2026-02-13)
 
 **Core value:** Read any valid GDPdU export into DuckDB with a single function call — no manual schema definition or data wrangling required.
-**Current focus:** Milestone v1.1 — Nextcloud Batch Import
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 8 - Batch Import Integration
-Plan: 01 complete (1/1 plans in phase complete)
-Status: Phase 08 complete, Milestone v1.1 complete
-Last activity: 2026-02-13 — Phase 08 Plan 01 complete (Nextcloud batch import integration)
-
-Progress: ████████████ 100% (8/8 phases complete)
+Phase: (none — between milestones)
+Status: v1.1 shipped, no active milestone
+Last activity: 2026-02-13 — Milestone v1.1 completed and archived
 
 ## Performance Metrics
 
-### v1.0 (Complete)
-- Phases: 5/5 complete
+### v1.0 Local Import (Complete)
+- Phases: 1-5 (5 phases, 6 plans)
 - Completed: 2026-01-22
-- Duration: Single day execution
-- Success: Local import working end-to-end
+- Duration: Single day
+- Delivered: Local GDPdU import via `import_gdpdu_navision(path)`
 
-### v1.1 (Complete)
-- Phases: 3/3 complete (8 phases total)
+### v1.1 Nextcloud Batch Import (Complete)
+- Phases: 6-8 (3 phases, 3 plans, 6 tasks)
 - Started: 2026-02-12
 - Completed: 2026-02-13
-- Phase 06 completed: 2026-02-12 (WebDAV Client)
-- Phase 07 completed: 2026-02-12 (Zip Extraction)
-- Phase 08 completed: 2026-02-13 (Batch Import Integration)
-- Success: Nextcloud batch import working end-to-end
+- Duration: 2 days
+- Lines added: 2,889
+- Delivered: Nextcloud batch import via `import_gdpdu_nextcloud(url, user, pass)`
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-| Decision | Rationale |
-|----------|-----------|
-| FetchContent for DuckDB | Avoids submodule management, automatic version pinning |
-| DuckDB v1.2.0 | Recent stable version with extension API |
-| pugixml for XML | Simple DOM API, handles GDPdU DTD gracefully |
-| Batch INSERT 1000 rows | Balances memory use vs. SQL statement size |
-| Type-aware quoting | Numeric values unquoted, strings/dates quoted |
-| Separate function for Nextcloud | Keeps local and cloud import concerns separate |
-| Zip-name prefix for tables | Avoids collisions when importing multiple exports |
-| Skip-and-continue on errors | Most practical for batch import workflows |
-| Use duckdb_httplib directly for WebDAV | DuckDB's HTTPClient wrapper doesn't support PROPFIND |
-| Disable SSL cert verification | Common for internal Nextcloud with self-signed certificates |
-| Result struct error handling | No exceptions thrown, better for batch processing |
-| Use duckdb_miniz for zip extraction | Already bundled with DuckDB, no additional dependencies needed |
-| Reuse create_temp_download_dir() | Consistent temp directory handling across modules |
-| Sanitize zip filenames for table prefixes | Ensures valid SQL identifiers and avoids naming collisions |
-| Search for index.xml to determine GDPdU root | Handles both root-level and nested directory structures in zip files |
 
 ### Pending Todos
 
@@ -65,33 +42,10 @@ None.
 ### Blockers/Concerns
 
 - Extension requires `-unsigned` flag to load (expected for unsigned extensions)
-- Large data files (>200MB) may cause timeout in testing environments
+- SSL cert verification disabled — may want to revisit for production use
 
 ## Session Continuity
 
 Last session: 2026-02-13
-Stopped at: Completed Phase 08 Plan 01 (Batch Import Integration)
-Milestone v1.1 complete
-
-## Performance Metrics Detail
-
-### Phase 06 Plan 01: WebDAV Client Implementation
-- Duration: 2 minutes
-- Tasks: 2/2 complete
-- Files: 3 (2 created, 1 modified)
-- Commits: 2 (40678aa, f0120a3)
-- Completed: 2026-02-12
-
-### Phase 07 Plan 01: Zip Extraction Module Implementation
-- Duration: 3 minutes
-- Tasks: 2/2 complete
-- Files: 3 (2 created, 1 modified)
-- Commits: 2 (eaa460e, 5be1de5)
-- Completed: 2026-02-12
-
-### Phase 08 Plan 01: Batch Import Integration
-- Duration: 3 minutes
-- Tasks: 2/2 complete
-- Files: 3 (2 created, 1 modified)
-- Commits: 2 (4416e3f, ee2a519)
-- Completed: 2026-02-13
+Stopped at: Milestone v1.1 archived
+Next action: `/gsd:new-milestone` to start next milestone
