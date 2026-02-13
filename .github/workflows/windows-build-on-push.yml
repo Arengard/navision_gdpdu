@@ -30,7 +30,21 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          choco install -y cmake ninja openssl
+          choco install -y cmake ninja
+
+      - name: Install OpenSSL via vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git vcpkg
+          ./vcpkg/bootstrap-vcpkg.sh
+          ./vcpkg/vcpkg install openssl:x64-windows
+          echo "vcpkg OpenSSL installed to: $(pwd)/vcpkg/installed/x64-windows"
+          ls -la vcpkg/installed/x64-windows/lib/ || true
+          ls -la vcpkg/installed/x64-windows/include/openssl/ || true
+
+      - name: Install OpenSSL via Chocolatey (fallback)
+        run: |
+          choco install -y openssl
 
       - name: Setup MSVC
         uses: microsoft/setup-msbuild@v1.0.2
@@ -38,12 +52,35 @@ jobs:
       - name: Build extension (Release)
         shell: bash
         env:
-          OPENSSL_ROOT_DIR: "C:/Program Files/OpenSSL-Win64"
+          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg/installed/x64-windows
           BUILD_UNITTESTS: 0
           BUILD_SHELL: 0
         run: |
+          echo "OPENSSL_ROOT_DIR=${OPENSSL_ROOT_DIR}"
           echo "Starting Windows release build process..."
           make release
+
+      - name: Verify OpenSSL was detected
+        shell: bash
+        run: |
+          echo "Checking CMake output for OpenSSL detection..."
+          if grep -rq "CPPHTTPLIB_OPENSSL_SUPPORT" build/CMakeCache.txt 2>/dev/null; then
+            echo "CPPHTTPLIB_OPENSSL_SUPPORT found in CMakeCache.txt"
+          fi
+          # Check the build log for our CMake status message
+          if grep -rql "OpenSSL not found" build/ 2>/dev/null; then
+            echo "FATAL: OpenSSL was NOT detected by CMake. The extension will not support HTTPS."
+            echo "Check OPENSSL_ROOT_DIR and that OpenSSL dev libraries are installed."
+            exit 1
+          fi
+          # Verify the compile definitions include CPPHTTPLIB_OPENSSL_SUPPORT
+          if grep -rq "CPPHTTPLIB_OPENSSL_SUPPORT" build/ 2>/dev/null; then
+            echo "OpenSSL support confirmed: CPPHTTPLIB_OPENSSL_SUPPORT is defined"
+          else
+            echo "FATAL: CPPHTTPLIB_OPENSSL_SUPPORT not found in build artifacts."
+            echo "OpenSSL was likely not found during CMake configure."
+            exit 1
+          fi
 
       - name: Find and package extension
         shell: bash

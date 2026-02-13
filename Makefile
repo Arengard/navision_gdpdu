@@ -8,7 +8,7 @@ all: release
 # Pass OPENSSL_ROOT_DIR from environment to CMake if set
 CMAKE_EXTRA_FLAGS =
 ifdef OPENSSL_ROOT_DIR
-CMAKE_EXTRA_FLAGS += -DOPENSSL_ROOT_DIR=$(OPENSSL_ROOT_DIR)
+CMAKE_EXTRA_FLAGS += -DOPENSSL_ROOT_DIR="$(OPENSSL_ROOT_DIR)"
 endif
 
 # Configure CMake for release build

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "DuckDB extension for importing GDPdU tax audit data",
   "dependencies": [
-    "pugixml"
+    "pugixml",
+    "openssl"
   ]
 }

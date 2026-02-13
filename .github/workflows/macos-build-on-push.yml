@@ -41,6 +41,17 @@ jobs:
           echo "Starting macOS release build process..."
           make release
 
+      - name: Verify OpenSSL was detected
+        run: |
+          echo "Checking CMake output for OpenSSL detection..."
+          if grep -rq "CPPHTTPLIB_OPENSSL_SUPPORT" build/ 2>/dev/null; then
+            echo "OpenSSL support confirmed: CPPHTTPLIB_OPENSSL_SUPPORT is defined"
+          else
+            echo "FATAL: CPPHTTPLIB_OPENSSL_SUPPORT not found in build artifacts."
+            echo "OpenSSL was likely not found during CMake configure."
+            exit 1
+          fi
+
       - name: Find and package extension
         run: |
           # Create distribution directory
