@@ -156,7 +156,9 @@ WebDavResult WebDavClient::list_files(bool filter_zips) {
         duckdb_httplib::Client client(proto_host_port_.c_str());
 
         // Configure SSL and timeouts
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
         client.enable_server_certificate_verification(false);
+#endif
         client.set_connection_timeout(30, 0); // 30 seconds
         client.set_read_timeout(30, 0);
         client.set_write_timeout(30, 0);
@@ -308,7 +310,9 @@ WebDavDownloadResult WebDavClient::download_file(const std::string& href, const 
         duckdb_httplib::Client client(proto_host_port_.c_str());
 
         // Configure SSL and timeouts
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
         client.enable_server_certificate_verification(false);
+#endif
         client.set_connection_timeout(30, 0);
         client.set_read_timeout(60, 0); // Longer timeout for downloads
         client.set_write_timeout(30, 0);
@@ -441,7 +445,7 @@ void cleanup_temp_dir(const std::string& dir_path) {
 #else
     // Unix: use system command
     std::string command = "rm -rf \"" + dir_path + "\"";
-    system(command.c_str());
+    (void)system(command.c_str());
 #endif
 }
 
