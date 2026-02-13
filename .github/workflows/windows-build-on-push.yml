@@ -30,21 +30,15 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          choco install -y cmake ninja
+          choco install -y cmake ninja openssl
 
       - name: Setup MSVC
         uses: microsoft/setup-msbuild@v1.0.2
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11.1
-        with:
-          vcpkgGitCommitId: 'ce613c41372b23b1f51333815feb3edd87ef8a8b'
-
       - name: Build extension (Release)
         shell: bash
         env:
-          VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg/installed/x64-windows
+          OPENSSL_ROOT_DIR: "C:/Program Files/OpenSSL-Win64"
           BUILD_UNITTESTS: 0
           BUILD_SHELL: 0
         run: |
