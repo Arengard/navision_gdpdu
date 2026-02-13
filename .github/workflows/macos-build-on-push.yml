@@ -107,7 +107,21 @@ jobs:
             echo "❌ Extension failed to load"
             exit 1
           }
-          echo "✅ Extension loaded and tested successfully!"
+          echo "✅ Extension loaded successfully!"
+
+          # Verify all expected functions are registered
+          echo "Verifying registered functions..."
+          "$DUCKDB_EXE" -unsigned -c "
+            LOAD 'dist/gdpdu.duckdb_extension';
+            SELECT function_name FROM duckdb_functions()
+            WHERE function_name IN ('import_gdpdu_navision','import_gdpdu_datev','import_gdpdu_nextcloud','import_xml_data','import_folder','export_gdpdu')
+            GROUP BY function_name
+            ORDER BY function_name;
+          " || {
+            echo "❌ Function verification failed"
+            exit 1
+          }
+          echo "✅ All functions verified!"
 
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4
