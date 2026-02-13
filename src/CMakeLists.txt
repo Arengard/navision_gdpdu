@@ -32,13 +32,20 @@ target_include_directories(gdpdu_loadable_extension PRIVATE ${duckdb_SOURCE_DIR}
 target_include_directories(gdpdu_extension PRIVATE ${duckdb_SOURCE_DIR}/third_party/httplib)
 
 # OpenSSL for HTTPS support in WebDAV client
+set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL QUIET)
 if(OPENSSL_FOUND)
     message(STATUS "OpenSSL found: HTTPS support enabled for WebDAV client")
+    message(STATUS "OpenSSL libraries: ${OPENSSL_LIBRARIES}")
     target_compile_definitions(gdpdu_loadable_extension PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
     target_link_libraries(gdpdu_loadable_extension OpenSSL::SSL OpenSSL::Crypto)
     target_compile_definitions(gdpdu_extension PRIVATE CPPHTTPLIB_OPENSSL_SUPPORT)
     target_link_libraries(gdpdu_extension OpenSSL::SSL OpenSSL::Crypto)
+    # Static OpenSSL on Windows needs system crypto and socket libraries
+    if(WIN32)
+        target_link_libraries(gdpdu_loadable_extension Crypt32 Ws2_32)
+        target_link_libraries(gdpdu_extension Crypt32 Ws2_32)
+    endif()
 else()
     message(WARNING "OpenSSL not found: WebDAV client will only support HTTP (not HTTPS)")
 endif()
