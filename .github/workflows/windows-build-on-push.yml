@@ -37,10 +37,10 @@ jobs:
         run: |
           git clone https://github.com/microsoft/vcpkg.git vcpkg
           ./vcpkg/bootstrap-vcpkg.sh
-          ./vcpkg/vcpkg install --triplet x64-windows-static
+          ./vcpkg/vcpkg install --triplet x64-windows-static-md
           echo "vcpkg manifest install complete (static)"
-          ls -la vcpkg_installed/x64-windows-static/lib/ || true
-          ls -la vcpkg_installed/x64-windows-static/include/openssl/ || true
+          ls -la vcpkg_installed/x64-windows-static-md/lib/ || true
+          ls -la vcpkg_installed/x64-windows-static-md/include/openssl/ || true
 
       - name: Install OpenSSL via Chocolatey (fallback)
         run: |
@@ -52,7 +52,7 @@ jobs:
       - name: Build extension (Release)
         shell: bash
         env:
-          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg_installed/x64-windows-static
+          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg_installed/x64-windows-static-md
           BUILD_UNITTESTS: 0
           BUILD_SHELL: 0
         run: |
@@ -105,6 +105,12 @@ jobs:
             echo "Checking for entrypoint symbol:"
             nm -g "$EXTENSION_FILE" | grep -i "gdpdu_duckdb_cpp_init" || echo "⚠️  Warning: Entrypoint symbol not found"
           fi
+
+          # Check DLL dependencies
+          echo "=== DLL Dependencies ==="
+          dumpbin //dependents "$EXTENSION_FILE" || echo "dumpbin not available"
+          echo "=== Extension file size ==="
+          ls -lh "$EXTENSION_FILE"
 
           # Copy to dist with standard name
           cp "$EXTENSION_FILE" dist/gdpdu.duckdb_extension
