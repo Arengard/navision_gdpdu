@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <cstring>
+#include <vector>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -40,6 +41,18 @@ static std::string normalize_path(const std::string& path) {
     return normalized;
 }
 
+// Read entire file into memory
+static bool read_file_to_buffer(const std::string& path, std::vector<char>& buffer) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        return false;
+    }
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    buffer.resize(static_cast<size_t>(size));
+    return !!file.read(buffer.data(), size);
+}
+
 ZipExtractResult extract_zip(const std::string& zip_path) {
     ZipExtractResult result;
     result.success = false;
@@ -53,9 +66,18 @@ ZipExtractResult extract_zip(const std::string& zip_path) {
         std::string extract_dir = create_temp_download_dir();
         result.extract_dir = extract_dir;
 
-        // Open the zip archive
-        if (!duckdb_miniz::mz_zip_reader_init_file(&zip_archive, zip_path.c_str(), 0)) {
-            result.error_message = "Failed to open zip file: " + zip_path;
+        // Read zip file into memory (DuckDB's miniz is built with MINIZ_NO_STDIO,
+        // so file-based APIs like mz_zip_reader_init_file are not available)
+        std::vector<char> zip_data;
+        if (!read_file_to_buffer(zip_path, zip_data)) {
+            result.error_message = "Failed to read zip file: " + zip_path;
+            cleanup_temp_dir(extract_dir);
+            return result;
+        }
+
+        // Open the zip archive from memory
+        if (!duckdb_miniz::mz_zip_reader_init_mem(&zip_archive, zip_data.data(), zip_data.size(), 0)) {
+            result.error_message = "Failed to parse zip file: " + zip_path;
             cleanup_temp_dir(extract_dir);
             return result;
         }
@@ -92,9 +114,31 @@ ZipExtractResult extract_zip(const std::string& zip_path) {
             // Create parent directories for this file
             create_parent_dirs(output_path);
 
-            // Extract the file
-            if (!duckdb_miniz::mz_zip_reader_extract_to_file(&zip_archive, i, output_path.c_str(), 0)) {
+            // Extract file to heap, then write to disk
+            size_t uncomp_size = 0;
+            void *extracted = duckdb_miniz::mz_zip_reader_extract_to_heap(&zip_archive, i, &uncomp_size, 0);
+            if (!extracted) {
                 result.error_message = "Failed to extract file: " + filename;
+                duckdb_miniz::mz_zip_reader_end(&zip_archive);
+                cleanup_temp_dir(extract_dir);
+                return result;
+            }
+
+            // Write extracted data to disk
+            std::ofstream outfile(output_path, std::ios::binary);
+            if (!outfile) {
+                duckdb_miniz::mz_free(extracted);
+                result.error_message = "Failed to create output file: " + output_path;
+                duckdb_miniz::mz_zip_reader_end(&zip_archive);
+                cleanup_temp_dir(extract_dir);
+                return result;
+            }
+            outfile.write(static_cast<const char*>(extracted), uncomp_size);
+            outfile.close();
+            duckdb_miniz::mz_free(extracted);
+
+            if (!outfile) {
+                result.error_message = "Failed to write file: " + output_path;
                 duckdb_miniz::mz_zip_reader_end(&zip_archive);
                 cleanup_temp_dir(extract_dir);
                 return result;
