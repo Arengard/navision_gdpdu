@@ -37,10 +37,10 @@ jobs:
         run: |
           git clone https://github.com/microsoft/vcpkg.git vcpkg
           ./vcpkg/bootstrap-vcpkg.sh
-          ./vcpkg/vcpkg install openssl:x64-windows
-          echo "vcpkg OpenSSL installed to: $(pwd)/vcpkg/installed/x64-windows"
-          ls -la vcpkg/installed/x64-windows/lib/ || true
-          ls -la vcpkg/installed/x64-windows/include/openssl/ || true
+          ./vcpkg/vcpkg install --triplet x64-windows
+          echo "vcpkg manifest install complete"
+          ls -la vcpkg_installed/x64-windows/lib/ || true
+          ls -la vcpkg_installed/x64-windows/include/openssl/ || true
 
       - name: Install OpenSSL via Chocolatey (fallback)
         run: |
@@ -52,7 +52,7 @@ jobs:
       - name: Build extension (Release)
         shell: bash
         env:
-          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg/installed/x64-windows
+          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg_installed/x64-windows
           BUILD_UNITTESTS: 0
           BUILD_SHELL: 0
         run: |
