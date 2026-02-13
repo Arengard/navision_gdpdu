@@ -124,8 +124,10 @@ Build a DuckDB C++ extension that reads German tax audit (GDPdU) exports with a 
   3. Failed zip files are skipped and remaining zips continue importing
   4. Result set includes table name, row count, status, and source zip filename for each table
   5. Function completes successfully even if some zips fail
-**Research**: TBD
-**Plans**: TBD
+**Research**: Not needed (wiring existing components)
+**Plans**: 1 plan
+Plans:
+- [ ] 08-01-PLAN.md -- Batch import orchestrator and table function registration
 
 ## Progress
 
