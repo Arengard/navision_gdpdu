@@ -5,6 +5,7 @@
 #include "folder_importer.hpp"
 #include "xml_parser_config.hpp"
 #include "xml_parser_registration.hpp"
+#include "nextcloud_importer.hpp"
 #include "duckdb.hpp"
 #include "duckdb/main/extension.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -29,6 +30,22 @@ struct GdpduImportGlobalState : public GlobalTableFunctionState {
     bool done;
 
     GdpduImportGlobalState() : current_row(0), done(false) {}
+};
+
+// Bind data for Nextcloud import
+struct NextcloudImportBindData : public TableFunctionData {
+    std::string nextcloud_url;
+    std::string username;
+    std::string password;
+};
+
+// Global state for Nextcloud import
+struct NextcloudImportGlobalState : public GlobalTableFunctionState {
+    std::vector<NextcloudImportResult> results;
+    idx_t current_row;
+    bool done;
+
+    NextcloudImportGlobalState() : current_row(0), done(false) {}
 };
 
 // Bind function: validates arguments and defines return columns
@@ -105,6 +122,91 @@ static void GdpduImportScan(
         output.SetValue(0, count, Value(result.table_name));
         output.SetValue(1, count, Value(result.row_count));
         output.SetValue(2, count, Value(result.status));
+
+        state.current_row++;
+        count++;
+    }
+
+    output.SetCardinality(count);
+
+    if (state.current_row >= state.results.size()) {
+        state.done = true;
+    }
+}
+
+// Bind function for Nextcloud import
+static unique_ptr<FunctionData> NextcloudImportBind(
+    ClientContext &context,
+    TableFunctionBindInput &input,
+    vector<LogicalType> &return_types,
+    vector<string> &names
+) {
+    auto bind_data = make_uniq<NextcloudImportBindData>();
+
+    // Get the 3 required arguments
+    bind_data->nextcloud_url = input.inputs[0].GetValue<string>();
+    bind_data->username = input.inputs[1].GetValue<string>();
+    bind_data->password = input.inputs[2].GetValue<string>();
+
+    // Define return columns
+    return_types.push_back(LogicalType::VARCHAR);  // table_name
+    names.push_back("table_name");
+
+    return_types.push_back(LogicalType::BIGINT);   // row_count
+    names.push_back("row_count");
+
+    return_types.push_back(LogicalType::VARCHAR);  // status
+    names.push_back("status");
+
+    return_types.push_back(LogicalType::VARCHAR);  // source_zip
+    names.push_back("source_zip");
+
+    return std::move(bind_data);
+}
+
+// Init function for Nextcloud import
+static unique_ptr<GlobalTableFunctionState> NextcloudImportInit(
+    ClientContext &context,
+    TableFunctionInitInput &input
+) {
+    auto state = make_uniq<NextcloudImportGlobalState>();
+
+    // Get bind data
+    auto &bind_data = input.bind_data->Cast<NextcloudImportBindData>();
+
+    // Create connection and run import
+    auto &db = DatabaseInstance::GetDatabase(context);
+    Connection conn(db);
+
+    state->results = import_from_nextcloud(conn, bind_data.nextcloud_url, bind_data.username, bind_data.password);
+    state->current_row = 0;
+    state->done = state->results.empty();
+
+    return std::move(state);
+}
+
+// Scan function for Nextcloud import
+static void NextcloudImportScan(
+    ClientContext &context,
+    TableFunctionInput &data,
+    DataChunk &output
+) {
+    auto &state = data.global_state->Cast<NextcloudImportGlobalState>();
+
+    if (state.done) {
+        return;
+    }
+
+    idx_t count = 0;
+    idx_t max_count = STANDARD_VECTOR_SIZE;
+
+    while (state.current_row < state.results.size() && count < max_count) {
+        auto &result = state.results[state.current_row];
+
+        output.SetValue(0, count, Value(result.table_name));
+        output.SetValue(1, count, Value(result.row_count));
+        output.SetValue(2, count, Value(result.status));
+        output.SetValue(3, count, Value(result.source_zip));
 
         state.current_row++;
         count++;
@@ -578,6 +680,20 @@ static void LoadInternal(ExtensionLoader &loader) {
     TableFunctionSet export_gdpdu_set("export_gdpdu");
     export_gdpdu_set.AddFunction(export_gdpdu_func);
     loader.RegisterFunction(export_gdpdu_set);
+
+    // Register import_gdpdu_nextcloud table function
+    TableFunctionSet nextcloud_import_set("import_gdpdu_nextcloud");
+
+    TableFunction nextcloud_import_func(
+        "import_gdpdu_nextcloud",
+        {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+        NextcloudImportScan,
+        NextcloudImportBind,
+        NextcloudImportInit
+    );
+    nextcloud_import_set.AddFunction(nextcloud_import_func);
+
+    loader.RegisterFunction(nextcloud_import_set);
 }
 
 // Extension class implementation for DuckDB 1.4+
