@@ -779,12 +779,64 @@ std::vector<FileImportResult> import_folder(
             sql << " FROM " << final_read_query;
             
             auto query_result = conn.Query(sql.str());
-            
-            if (query_result->HasError()) {
+
+            // If xlsx import failed (e.g. type mismatch like 'Summen' in DOUBLE column),
+            // retry with all_varchar=true and let infer_and_convert_types() handle typing
+            if (query_result->HasError() && (type_lower == "xlsx" || type_lower == "excel")) {
+                std::string data_error = query_result->GetError();
+
+                // Rebuild read query with all_varchar=true
+                std::ostringstream retry_read;
+                retry_read << read_func << "('" << escape_sql(file_path) << "', all_varchar=true";
+                if (!options.empty()) {
+                    std::string opts_lower = options;
+                    std::transform(opts_lower.begin(), opts_lower.end(), opts_lower.begin(), ::tolower);
+                    if (opts_lower.find("all_varchar") == std::string::npos) {
+                        retry_read << ", " << options;
+                    }
+                }
+                retry_read << ")";
+
+                // Re-detect columns with all_varchar
+                std::string retry_test = "SELECT * FROM " + retry_read.str() + " LIMIT 0";
+                auto retry_cols_result = conn.Query(retry_test);
+
+                if (!retry_cols_result->HasError()) {
+                    orig_cols.clear();
+                    for (idx_t i = 0; i < retry_cols_result->ColumnCount(); ++i) {
+                        orig_cols.push_back(retry_cols_result->ColumnName(i));
+                    }
+
+                    // Rebuild CREATE TABLE with new read query
+                    std::ostringstream retry_sql;
+                    retry_sql << "CREATE OR REPLACE TABLE \"" << result.table_name << "\" AS SELECT ";
+                    for (size_t i = 0; i < orig_cols.size(); ++i) {
+                        if (i > 0) retry_sql << ", ";
+                        std::string normalized_name = to_snake_case(orig_cols[i]);
+                        retry_sql << "\"" << escape_sql(orig_cols[i]) << "\" AS \"" << escape_sql(normalized_name) << "\"";
+                    }
+                    retry_sql << " FROM " << retry_read.str();
+
+                    query_result = conn.Query(retry_sql.str());
+                }
+
+                // If retry also failed, report the original error
+                if (query_result->HasError()) {
+                    result.row_count = 0;
+                    result.column_count = 0;
+                    result.status = "Load failed: " + data_error;
+                    results.push_back(result);
+                    continue;
+                }
+            } else if (query_result->HasError()) {
                 result.row_count = 0;
                 result.column_count = 0;
                 result.status = "Load failed: " + query_result->GetError();
-            } else {
+                results.push_back(result);
+                continue;
+            }
+
+            {
                 // Clean, trim, and infer types for all columns
                 clean_and_trim_columns(conn, result.table_name);
                 infer_and_convert_types(conn, result.table_name);
