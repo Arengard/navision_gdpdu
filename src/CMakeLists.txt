@@ -16,6 +16,7 @@ set(EXTENSION_SOURCES
     gdpdu_xml_parser.cpp
     generic_xml_importer.cpp
     folder_importer.cpp
+    nextcloud_importer.cpp
     webdav_client.cpp
     zip_extractor.cpp
 )
