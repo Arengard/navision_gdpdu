@@ -336,6 +336,105 @@ The generic parser can be configured to handle different XML schemas by specifyi
 - Type mappings
 - CSV delimiter and formatting options
 
+## Nextcloud Batch Import
+
+The extension can batch-import GDPdU exports directly from a Nextcloud server via WebDAV. It downloads all `.zip` files from a Nextcloud folder, extracts them, and imports the GDPdU data automatically.
+
+### Basic Usage
+
+```sql
+SELECT * FROM import_gdpdu_nextcloud(
+    'https://cloud.example.com/remote.php/dav/files/user/exports/',
+    'myuser',
+    'mypassword'
+);
+```
+
+**Parameters:**
+
+| # | Parameter | Type | Description |
+|---|-----------|------|-------------|
+| 1 | `nextcloud_url` | VARCHAR | Full Nextcloud WebDAV path to the folder containing zip files |
+| 2 | `username` | VARCHAR | Nextcloud username |
+| 3 | `password` | VARCHAR | Nextcloud password |
+
+Authentication uses HTTP Basic Auth. Self-signed SSL certificates are supported.
+
+### How It Works
+
+1. **List** - Connects to Nextcloud via WebDAV (PROPFIND) and lists all `.zip` files in the folder
+2. **Download** - Downloads each zip file to a temporary directory
+3. **Extract** - Extracts zip contents and locates the `index.xml` file
+4. **Import** - Calls the GDPdU importer on each extracted export
+5. **Rename** - Prefixes all imported table names with a sanitized version of the zip filename to avoid naming collisions
+6. **Cleanup** - Removes all temporary files
+
+### Table Name Prefixing
+
+Tables are prefixed with the zip filename to prevent collisions when multiple exports contain tables with the same name:
+
+| Zip File | Original Table | Final Table Name |
+|----------|---------------|-----------------|
+| `Export 2024.zip` | `Buchungen` | `Export_2024_Buchungen` |
+| `Export 2023.zip` | `Buchungen` | `Export_2023_Buchungen` |
+
+### Return Value
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `table_name` | VARCHAR | Prefixed table name |
+| `row_count` | BIGINT | Number of rows imported (0 on error) |
+| `status` | VARCHAR | "OK" or error description |
+| `source_zip` | VARCHAR | Original zip filename |
+
+### Example
+
+```sql
+-- Import all GDPdU exports from Nextcloud
+SELECT * FROM import_gdpdu_nextcloud(
+    'https://nextcloud.mycompany.com/remote.php/dav/files/accounting/gdpdu/',
+    'accounting_user',
+    'secure_password'
+);
+
+-- Result:
+-- ┌───────────────────────────┬───────────┬────────┬──────────────────┐
+-- │        table_name         │ row_count │ status │    source_zip    │
+-- ├───────────────────────────┼───────────┼────────┼──────────────────┤
+-- │ Export_2024_Sachkonto     │      1823 │ OK     │ Export 2024.zip  │
+-- │ Export_2024_Sachposten    │     45672 │ OK     │ Export 2024.zip  │
+-- │ Export_2023_Sachkonto     │      1650 │ OK     │ Export 2023.zip  │
+-- │ Export_2023_Sachposten    │     38901 │ OK     │ Export 2023.zip  │
+-- └───────────────────────────┴───────────┴────────┴──────────────────┘
+
+-- Query imported tables
+SELECT * FROM Export_2024_Sachposten LIMIT 10;
+
+-- Check for errors
+SELECT table_name, status, source_zip
+FROM import_gdpdu_nextcloud('https://cloud.example.com/...', 'user', 'pass')
+WHERE status != 'OK';
+```
+
+### Error Handling
+
+The function uses a skip-and-continue pattern for batch resilience. If one zip file fails to download, extract, or import, the error is recorded and processing continues with the remaining files.
+
+| Failure | Behavior |
+|---------|----------|
+| Cannot connect / auth fails | Abort with single error result |
+| One zip fails to download | Skip, continue with next zip |
+| One zip fails to extract | Skip, continue with next zip |
+| One zip fails to import | Skip, continue with next zip |
+
+### Nextcloud URL Format
+
+The URL should point to a WebDAV folder path. Common format:
+
+```
+https://<host>/remote.php/dav/files/<username>/<folder>/
+```
+
 ## GDPdU Export
 
 The extension includes an `export_gdpdu` function that exports DuckDB tables back to GDPdU-compliant format for tax audit purposes.
@@ -457,6 +556,7 @@ New parsers can be added by:
 | `import_folder(path, file_type)` | N/A | Import all files of specified type from folder |
 | `import_folder(path, file_type, options)` | N/A | Import with DuckDB read options passed through |
 | `export_gdpdu(path, table_name)` | N/A | Export table to GDPdU format |
+| `import_gdpdu_nextcloud(url, user, pass)` | GDPdU | Batch import GDPdU zips from Nextcloud via WebDAV |
 
 ## License
 
