@@ -5,10 +5,16 @@
 # Default target
 all: release
 
+# Pass OPENSSL_ROOT_DIR from environment to CMake if set
+CMAKE_EXTRA_FLAGS =
+ifdef OPENSSL_ROOT_DIR
+CMAKE_EXTRA_FLAGS += -DOPENSSL_ROOT_DIR=$(OPENSSL_ROOT_DIR)
+endif
+
 # Configure CMake for release build
 configure:
 	@mkdir -p build
-	cmake -B build -DCMAKE_BUILD_TYPE=Release
+	cmake -B build -DCMAKE_BUILD_TYPE=Release $(CMAKE_EXTRA_FLAGS)
 
 # Release build
 release: configure

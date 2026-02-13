@@ -30,12 +30,13 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          brew install cmake ninja curl wget
+          brew install cmake ninja curl wget openssl@3
 
       - name: Build extension (Release)
         env:
           BUILD_UNITTESTS: 0
           BUILD_SHELL: 0
+          OPENSSL_ROOT_DIR: /opt/homebrew/opt/openssl@3
         run: |
           echo "Starting macOS release build process..."
           make release

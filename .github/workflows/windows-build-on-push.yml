@@ -40,10 +40,15 @@ jobs:
         with:
           vcpkgGitCommitId: 'ce613c41372b23b1f51333815feb3edd87ef8a8b'
 
+      - name: Install OpenSSL via vcpkg
+        run: |
+          ./vcpkg/vcpkg install openssl:x64-windows
+
       - name: Build extension (Release)
         shell: bash
         env:
           VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          OPENSSL_ROOT_DIR: ${{ github.workspace }}/vcpkg/installed/x64-windows
           BUILD_UNITTESTS: 0
           BUILD_SHELL: 0
         run: |
