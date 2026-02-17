@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DataSet>
+  <Media>
+    <Name>Test Export</Name>
+    <Table>
+      <URL>kunden.txt</URL>
+      <Name>Kunden</Name>
+      <Description>Kundenstammdaten</Description>
+      <DecimalSymbol>,</DecimalSymbol>
+      <DigitGroupingSymbol>.</DigitGroupingSymbol>
+      <VariableLength>
+        <VariablePrimaryKey>
+          <Name>Nr</Name>
+          <Description>Kundennummer</Description>
+          <AlphaNumeric/>
+          <MaxLength>20</MaxLength>
+        </VariablePrimaryKey>
+        <VariableColumn>
+          <Name>Name</Name>
+          <Description>Kundenname</Description>
+          <AlphaNumeric/>
+          <MaxLength>100</MaxLength>
+        </VariableColumn>
+        <VariableColumn>
+          <Name>Saldo</Name>
+          <Description>Kontosaldo</Description>
+          <Numeric>
+            <Accuracy>2</Accuracy>
+          </Numeric>
+          <MaxLength>20</MaxLength>
+        </VariableColumn>
+        <VariableColumn>
+          <Name>ErstellDatum</Name>
+          <Description>Erstellungsdatum</Description>
+          <Date/>
+        </VariableColumn>
+        <VariableColumn>
+          <Name>Anzahl</Name>
+          <Description>Anzahl Bestellungen</Description>
+          <Numeric/>
+        </VariableColumn>
+      </VariableLength>
+    </Table>
+    <Table>
+      <URL>buchungen.txt</URL>
+      <Name>Buchungen</Name>
+      <Description>Sachposten</Description>
+      <DecimalSymbol>,</DecimalSymbol>
+      <DigitGroupingSymbol>.</DigitGroupingSymbol>
+      <VariableLength>
+        <VariablePrimaryKey>
+          <Name>LfdNr</Name>
+          <Description>Laufende Nummer</Description>
+          <Numeric/>
+        </VariablePrimaryKey>
+        <VariableColumn>
+          <Name>KontoNr</Name>
+          <Description>Kontonummer</Description>
+          <AlphaNumeric/>
+        </VariableColumn>
+        <VariableColumn>
+          <Name>Betrag</Name>
+          <Description>Buchungsbetrag</Description>
+          <Numeric>
+            <Accuracy>2</Accuracy>
+          </Numeric>
+        </VariableColumn>
+        <VariableColumn>
+          <Name>BuchungsDatum</Name>
+          <Description>Buchungsdatum</Description>
+          <Date/>
+        </VariableColumn>
+      </VariableLength>
+    </Table>
+  </Media>
+</DataSet>

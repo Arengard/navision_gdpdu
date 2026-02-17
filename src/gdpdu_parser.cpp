@@ -155,6 +155,15 @@ static ColumnDef parse_column(const pugi::xml_node& node, bool is_primary_key, c
     col.name = to_snake_case(raw_name);
     col.is_primary_key = is_primary_key;
     
+    // Parse MaxLength if present (used for DECIMAL total precision and VARCHAR length)
+    pugi::xml_node max_length_node = node.child("MaxLength");
+    if (!max_length_node.empty()) {
+        const char* ml_text = max_length_node.child_value();
+        if (ml_text && ml_text[0] != '\0') {
+            col.max_length = std::stoi(ml_text);
+        }
+    }
+
     // Determine type by checking for type child elements
     if (!node.child("AlphaNumeric").empty()) {
         col.type = GdpduType::AlphaNumeric;
@@ -182,7 +191,7 @@ static ColumnDef parse_column(const pugi::xml_node& node, bool is_primary_key, c
         col.type = GdpduType::AlphaNumeric;
         col.precision = 0;
     }
-    
+
     return col;
 }
 

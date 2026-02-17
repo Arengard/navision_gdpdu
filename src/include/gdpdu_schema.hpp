@@ -17,9 +17,10 @@ struct ColumnDef {
     std::string name;           // From <Name> element
     GdpduType type;             // AlphaNumeric, Numeric, or Date
     int precision;              // From <Accuracy> element, 0 if not specified
+    int max_length;             // From <MaxLength> element, 0 if not specified
     bool is_primary_key;        // true if from VariablePrimaryKey
-    
-    ColumnDef() : type(GdpduType::AlphaNumeric), precision(0), is_primary_key(false) {}
+
+    ColumnDef() : type(GdpduType::AlphaNumeric), precision(0), max_length(0), is_primary_key(false) {}
 };
 
 // Table definition from Table element

@@ -135,6 +135,23 @@ jobs:
           }
           echo "✅ All functions verified!"
 
+      - name: Run extension tests
+        run: |
+          DUCKDB_EXE=$(find build -name "duckdb" -type f | head -1)
+          if [ -z "$DUCKDB_EXE" ]; then
+            echo "DuckDB executable not found, skipping tests"
+            exit 0
+          fi
+          echo "Running test suite..."
+          OUTPUT=$("$DUCKDB_EXE" -unsigned -c "LOAD 'dist/gdpdu.duckdb_extension';" < test/run_tests.sql 2>&1)
+          echo "$OUTPUT"
+          # Check for any FAIL lines
+          if echo "$OUTPUT" | grep -q "FAIL"; then
+            echo "TESTS FAILED"
+            exit 1
+          fi
+          echo "All tests passed!"
+
       - name: Upload extension artifact
         uses: actions/upload-artifact@v4
         with:

@@ -7,18 +7,28 @@ namespace duckdb {
 std::string generate_create_table_sql(const TableDef& table) {
     std::ostringstream sql;
     sql << "CREATE TABLE \"" << table.name << "\" (";
-    
+
     bool first = true;
     for (const auto& col : table.columns) {
         if (!first) {
             sql << ", ";
         }
         first = false;
-        
+
         // Quote column name to handle special chars like "VAT%"
         sql << "\"" << col.name << "\" " << gdpdu_type_to_duckdb_type(col);
     }
-    
+
+    // Add PRIMARY KEY constraint if defined
+    if (!table.primary_key_columns.empty()) {
+        sql << ", PRIMARY KEY (";
+        for (size_t i = 0; i < table.primary_key_columns.size(); ++i) {
+            if (i > 0) sql << ", ";
+            sql << "\"" << table.primary_key_columns[i] << "\"";
+        }
+        sql << ")";
+    }
+
     sql << ")";
     return sql.str();
 }
