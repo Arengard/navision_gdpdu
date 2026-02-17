@@ -559,9 +559,25 @@ std::vector<FileImportResult> import_folder(
     const std::string& options) {
     
     std::vector<FileImportResult> results;
-    
+
+    // Path traversal protection
+    std::string check_path = normalize_path(folder_path);
+    if (check_path.find("/../") != std::string::npos ||
+        check_path.find("../") == 0 ||
+        (check_path.size() >= 3 && check_path.substr(check_path.size() - 3) == "/..") ||
+        check_path == "..") {
+        FileImportResult r;
+        r.table_name = "(security)";
+        r.file_name = "";
+        r.row_count = 0;
+        r.column_count = 0;
+        r.status = "Path traversal detected: path contains '..' components";
+        results.push_back(r);
+        return results;
+    }
+
     // Normalize folder path
-    std::string norm_folder = normalize_path(folder_path);
+    std::string norm_folder = check_path;
     
     // Get list of matching files
     std::vector<std::string> files = get_matching_files(norm_folder, file_type);

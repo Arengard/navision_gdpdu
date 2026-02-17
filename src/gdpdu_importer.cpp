@@ -125,9 +125,30 @@ static std::string build_select_clause(const TableDef& table) {
     return ss.str();
 }
 
+// Check if a path contains directory traversal sequences
+static bool contains_path_traversal(const std::string& path) {
+    std::string normalized = normalize_path(path);
+    // Check for ".." path components
+    if (normalized.find("/../") != std::string::npos) return true;
+    if (normalized.find("../") == 0) return true;
+    if (normalized.size() >= 3 && normalized.substr(normalized.size() - 3) == "/..") return true;
+    if (normalized == "..") return true;
+    return false;
+}
+
 std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::string& directory_path, const std::string& column_name_field) {
     std::vector<ImportResult> results;
-    
+
+    // Validate path against directory traversal
+    if (contains_path_traversal(directory_path)) {
+        ImportResult r;
+        r.table_name = "(security)";
+        r.row_count = 0;
+        r.status = "Path traversal detected: path contains '..' components";
+        results.push_back(r);
+        return results;
+    }
+
     // Step 1: Parse index.xml
     GdpduSchema schema;
     try {
@@ -158,7 +179,13 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
             continue;
         }
         
-        // Build data file path
+        // Build data file path (validate against traversal from XML-defined URLs)
+        if (contains_path_traversal(table.url)) {
+            result.row_count = 0;
+            result.status = "Path traversal in table URL: " + table.url;
+            results.push_back(result);
+            continue;
+        }
         std::string data_path = join_path(directory_path, table.url);
         
         // Use DuckDB's native read_csv with:

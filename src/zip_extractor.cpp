@@ -104,6 +104,22 @@ ZipExtractResult extract_zip(const std::string& zip_path) {
             // Normalize the filename (convert backslashes to forward slashes)
             std::string filename = normalize_path(file_stat.m_filename);
 
+            // Zip Slip protection: reject paths containing ".." to prevent directory traversal
+            if (filename.find("..") != std::string::npos) {
+                result.error_message = "Zip Slip detected: path contains '..': " + filename;
+                duckdb_miniz::mz_zip_reader_end(&zip_archive);
+                cleanup_temp_dir(extract_dir);
+                return result;
+            }
+
+            // Reject absolute paths
+            if (!filename.empty() && filename[0] == '/') {
+                result.error_message = "Zip entry has absolute path: " + filename;
+                duckdb_miniz::mz_zip_reader_end(&zip_archive);
+                cleanup_temp_dir(extract_dir);
+                return result;
+            }
+
             // Build full output path
             std::string output_path = extract_dir;
             if (output_path.back() != '/' && output_path.back() != '\\') {

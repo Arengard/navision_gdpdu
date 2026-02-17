@@ -7,7 +7,7 @@ set(EXTENSION_SOURCES
     gdpdu_schema.cpp
     gdpdu_parser.cpp
     gdpdu_table_creator.cpp
-    gdpdu_data_parser.cpp
+
     gdpdu_importer.cpp
     gdpdu_exporter.cpp
     xml_parser_factory.cpp

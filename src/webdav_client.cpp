@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <ctime>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -16,6 +17,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <dirent.h>
 #endif
 
 namespace duckdb {
@@ -435,18 +437,54 @@ std::string create_temp_download_dir() {
     return full_path;
 }
 
+// Recursive directory removal without system() to prevent command injection
+static void remove_directory_recursive(const std::string& path) {
+#ifdef _WIN32
+    // Use Windows API to enumerate and remove files
+    std::string search_path = path + "\\*";
+    WIN32_FIND_DATAA fd;
+    HANDLE hFind = FindFirstFileA(search_path.c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            std::string name = fd.cFileName;
+            if (name == "." || name == "..") continue;
+            std::string full_path = path + "\\" + name;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                remove_directory_recursive(full_path);
+            } else {
+                DeleteFileA(full_path.c_str());
+            }
+        } while (FindNextFileA(hFind, &fd));
+        FindClose(hFind);
+    }
+    RemoveDirectoryA(path.c_str());
+#else
+    // Use POSIX opendir/readdir to enumerate and remove files
+    DIR *dir = opendir(path.c_str());
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            std::string name = entry->d_name;
+            if (name == "." || name == "..") continue;
+            std::string full_path = path + "/" + name;
+            struct stat st;
+            if (stat(full_path.c_str(), &st) == 0) {
+                if (S_ISDIR(st.st_mode)) {
+                    remove_directory_recursive(full_path);
+                } else {
+                    unlink(full_path.c_str());
+                }
+            }
+        }
+        closedir(dir);
+    }
+    rmdir(path.c_str());
+#endif
+}
+
 void cleanup_temp_dir(const std::string& dir_path) {
     if (dir_path.empty()) return;
-
-#ifdef _WIN32
-    // Windows: use system command to remove directory recursively
-    std::string command = "rmdir /S /Q \"" + dir_path + "\"";
-    system(command.c_str());
-#else
-    // Unix: use system command
-    std::string command = "rm -rf \"" + dir_path + "\"";
-    (void)system(command.c_str());
-#endif
+    remove_directory_recursive(dir_path);
 }
 
 } // namespace duckdb
