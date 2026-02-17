@@ -106,15 +106,27 @@ static std::string build_select_clause(const TableDef& table) {
             case GdpduType::Numeric:
                 if (col.precision > 0) {
                     // Decimal: replace German comma with dot, remove grouping dots
-                    ss << "CAST(REPLACE(REPLACE(" << col_ref << ", '.', ''), ',', '.') AS DECIMAL(18," << col.precision << "))";
+                    // Use MaxLength for total precision if available, otherwise 18
+                    int total_prec = 18;
+                    if (col.max_length > 0) {
+                        total_prec = col.max_length;
+                    }
+                    if (total_prec <= col.precision) {
+                        total_prec = col.precision + 1;
+                    }
+                    if (total_prec > 38) {
+                        total_prec = 38;
+                    }
+                    ss << "CAST(REPLACE(REPLACE(" << col_ref << ", '.', ''), ',', '.') AS DECIMAL(" << total_prec << "," << col.precision << "))";
                 } else {
                     // Integer: remove grouping dots
                     ss << "CAST(REPLACE(" << col_ref << ", '.', '') AS BIGINT)";
                 }
                 break;
             case GdpduType::Date:
-                // German date DD.MM.YYYY -> DATE (handle empty/whitespace values)
-                ss << "CASE WHEN " << col_ref << " IS NULL OR TRIM(" << col_ref << ") = '' THEN NULL ELSE strptime(TRIM(" << col_ref << "), '%d.%m.%Y')::DATE END";
+                // German date DD.MM.YYYY -> DATE (handle empty/whitespace/invalid values)
+                // Use TRY_STRPTIME to return NULL for invalid dates instead of erroring
+                ss << "CASE WHEN " << col_ref << " IS NULL OR TRIM(" << col_ref << ") = '' THEN NULL ELSE TRY_STRPTIME(TRIM(" << col_ref << "), '%d.%m.%Y')::DATE END";
                 break;
             case GdpduType::AlphaNumeric:
             default:
@@ -339,6 +351,25 @@ std::vector<ImportResult> import_gdpdu_navision(Connection& conn, const std::str
                     result.row_count = count_result->GetValue(0, 0).GetValue<int64_t>();
                 }
                 result.status = "OK";
+
+                // Delimiter validation: if table has >1 column, check that data is
+                // actually distributed across columns (not all crammed into column 0).
+                // If all non-first columns are NULL in every row, the delimiter is likely wrong.
+                if (result.row_count > 0 && table.columns.size() > 1) {
+                    std::ostringstream check_sql;
+                    check_sql << "SELECT COUNT(*) FROM \"" << table.name << "\" WHERE ";
+                    for (size_t c = 1; c < table.columns.size(); ++c) {
+                        if (c > 1) check_sql << " OR ";
+                        check_sql << "\"" << table.columns[c].name << "\" IS NOT NULL";
+                    }
+                    auto check_result = conn.Query(check_sql.str());
+                    if (!check_result->HasError() && check_result->RowCount() > 0) {
+                        int64_t non_null_count = check_result->GetValue(0, 0).GetValue<int64_t>();
+                        if (non_null_count == 0) {
+                            result.status = "Warning: all non-first columns are NULL - delimiter may be wrong (expected ';')";
+                        }
+                    }
+                }
             } catch (const std::exception& e) {
                 result.row_count = 0;
                 result.status = std::string("Load failed: ") + e.what();

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DataSet>
+  <Media>
+    <Name>Invalid Date Test</Name>
+    <Table>
+      <URL>daten.txt</URL>
+      <Name>DatumTest</Name>
+      <DecimalSymbol>,</DecimalSymbol>
+      <DigitGroupingSymbol>.</DigitGroupingSymbol>
+      <VariableLength>
+        <VariablePrimaryKey>
+          <Name>Nr</Name>
+          <AlphaNumeric/>
+        </VariablePrimaryKey>
+        <VariableColumn>
+          <Name>Datum</Name>
+          <Date/>
+        </VariableColumn>
+        <VariableColumn>
+          <Name>Wert</Name>
+          <Numeric>
+            <Accuracy>2</Accuracy>
+          </Numeric>
+        </VariableColumn>
+      </VariableLength>
+    </Table>
+  </Media>
+</DataSet>

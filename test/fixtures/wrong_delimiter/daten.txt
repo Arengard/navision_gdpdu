@@ -1,0 +1,2 @@
+K001|Mueller GmbH|100
+K002|Schmidt KG|200

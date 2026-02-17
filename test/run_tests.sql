@@ -131,6 +131,41 @@ SELECT CASE WHEN status LIKE '%Path traversal%' THEN 'PASS' ELSE 'FAIL: expected
 FROM import_gdpdu_navision('../../etc/passwd');
 
 -- ============================================================
+-- Test 10: Invalid date handling (TRY_STRPTIME graceful NULL)
+-- ============================================================
+SELECT '--- Test 10: Invalid date handling ---' as test;
+
+SELECT * FROM import_gdpdu_navision('test/fixtures/invalid_dates');
+
+-- Valid date should parse correctly
+SELECT CASE WHEN datum = DATE '2024-03-15' THEN 'PASS' ELSE 'FAIL: expected 2024-03-15, got ' || COALESCE(datum::VARCHAR, 'NULL') END as test_valid_date
+FROM "DatumTest" WHERE nr = 'A1';
+
+-- Invalid date 32.13.2024 should become NULL (not crash)
+SELECT CASE WHEN datum IS NULL THEN 'PASS' ELSE 'FAIL: expected NULL for invalid date 32.13.2024, got ' || datum::VARCHAR END as test_invalid_date
+FROM "DatumTest" WHERE nr = 'A2';
+
+-- Empty date should become NULL
+SELECT CASE WHEN datum IS NULL THEN 'PASS' ELSE 'FAIL: expected NULL for empty date, got ' || datum::VARCHAR END as test_empty_date
+FROM "DatumTest" WHERE nr = 'A4';
+
+-- Valid date at end should also work (import didn't abort on bad rows)
+SELECT CASE WHEN datum = DATE '2025-01-01' THEN 'PASS' ELSE 'FAIL: expected 2025-01-01, got ' || COALESCE(datum::VARCHAR, 'NULL') END as test_date_after_invalid
+FROM "DatumTest" WHERE nr = 'A5';
+
+-- All 5 rows should be imported (partial import works)
+SELECT CASE WHEN cnt = 5 THEN 'PASS' ELSE 'FAIL: expected 5 rows, got ' || cnt::VARCHAR END as test_all_rows_imported
+FROM (SELECT COUNT(*) as cnt FROM "DatumTest");
+
+-- ============================================================
+-- Test 11: Wrong delimiter warning
+-- ============================================================
+SELECT '--- Test 11: Wrong delimiter detection ---' as test;
+
+SELECT CASE WHEN status LIKE '%delimiter%' THEN 'PASS' ELSE 'FAIL: expected delimiter warning, got ' || status END as test_wrong_delimiter
+FROM import_gdpdu_navision('test/fixtures/wrong_delimiter');
+
+-- ============================================================
 -- Summary
 -- ============================================================
 SELECT '--- All tests completed ---' as test;
