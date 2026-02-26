@@ -6,6 +6,7 @@
 #include "xml_parser_config.hpp"
 #include "xml_parser_registration.hpp"
 #include "nextcloud_importer.hpp"
+#include "buchungsstapel_importer.hpp"
 #include "duckdb.hpp"
 #include "duckdb/main/extension.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -694,6 +695,100 @@ static void LoadInternal(ExtensionLoader &loader) {
     nextcloud_import_set.AddFunction(nextcloud_import_func);
 
     loader.RegisterFunction(nextcloud_import_set);
+
+    // Register read_buchungsstapel table function
+    TableFunctionSet buchungsstapel_set("read_buchungsstapel");
+
+    // Bind data for Buchungsstapel import
+    struct BuchungsstapelBindData : public TableFunctionData {
+        std::string folder_path;
+    };
+
+    // Global state for Buchungsstapel import
+    struct BuchungsstapelGlobalState : public GlobalTableFunctionState {
+        std::vector<BuchungsstapelImportResult> results;
+        idx_t current_row;
+        bool done;
+
+        BuchungsstapelGlobalState() : current_row(0), done(false) {}
+    };
+
+    // Bind function
+    auto BuchungsstapelBind = [](ClientContext &context,
+                                  TableFunctionBindInput &input,
+                                  vector<LogicalType> &return_types,
+                                  vector<string> &names) -> unique_ptr<FunctionData> {
+        auto bind_data = make_uniq<BuchungsstapelBindData>();
+        bind_data->folder_path = input.inputs[0].GetValue<string>();
+
+        return_types.push_back(LogicalType::VARCHAR);  // table_name
+        names.push_back("table_name");
+        return_types.push_back(LogicalType::VARCHAR);  // file_name
+        names.push_back("file_name");
+        return_types.push_back(LogicalType::BIGINT);   // row_count
+        names.push_back("row_count");
+        return_types.push_back(LogicalType::VARCHAR);  // status
+        names.push_back("status");
+
+        return std::move(bind_data);
+    };
+
+    // Init function
+    auto BuchungsstapelInit = [](ClientContext &context,
+                                  TableFunctionInitInput &input) -> unique_ptr<GlobalTableFunctionState> {
+        auto state = make_uniq<BuchungsstapelGlobalState>();
+        auto &bind_data = input.bind_data->Cast<BuchungsstapelBindData>();
+        auto &db = DatabaseInstance::GetDatabase(context);
+        Connection conn(db);
+
+        state->results = import_buchungsstapel(conn, bind_data.folder_path);
+        state->current_row = 0;
+        state->done = state->results.empty();
+
+        return std::move(state);
+    };
+
+    // Scan function
+    auto BuchungsstapelScan = [](ClientContext &context,
+                                  TableFunctionInput &data,
+                                  DataChunk &output) -> void {
+        auto &state = data.global_state->Cast<BuchungsstapelGlobalState>();
+
+        if (state.done) return;
+
+        idx_t count = 0;
+        idx_t max_count = STANDARD_VECTOR_SIZE;
+
+        while (state.current_row < state.results.size() && count < max_count) {
+            auto &result = state.results[state.current_row];
+
+            output.SetValue(0, count, Value(result.table_name));
+            output.SetValue(1, count, Value(result.file_name));
+            output.SetValue(2, count, Value(result.row_count));
+            output.SetValue(3, count, Value(result.status));
+
+            state.current_row++;
+            count++;
+        }
+
+        output.SetCardinality(count);
+
+        if (state.current_row >= state.results.size()) {
+            state.done = true;
+        }
+    };
+
+    // Single argument: read_buchungsstapel('/path/to/folder')
+    TableFunction buchungsstapel_func(
+        "read_buchungsstapel",
+        {LogicalType::VARCHAR},
+        BuchungsstapelScan,
+        BuchungsstapelBind,
+        BuchungsstapelInit
+    );
+    buchungsstapel_set.AddFunction(buchungsstapel_func);
+
+    loader.RegisterFunction(buchungsstapel_set);
 }
 
 // Extension class implementation for DuckDB 1.4+
