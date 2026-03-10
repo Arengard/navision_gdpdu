@@ -1,102 +1,42 @@
 # GDPdU Navision Extension for DuckDB
 
-A DuckDB extension for importing GDPdU (Grundsätze zum Datenzugriff und zur Prüfbarkeit digitaler Unterlagen) exports from Microsoft Dynamics NAV (Navision) - the German standard format for tax audit data.
+A DuckDB extension for importing GDPdU (Grundsätze zum Datenzugriff und zur Prüfbarkeit digitaler Unterlagen) exports from Microsoft Dynamics NAV (Navision).
 
 ## Installation
 
-Build the extension from source using the DuckDB extension build system:
-
-```bash
-make release
-```
-
-Or manually:
-
-```bash
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
-```
-
-### Extension Location
-
-After building, the extension file is located at:
-
-- **Main build location**: `build/_deps/duckdb-build/extension/gdpdu/gdpdu.duckdb_extension`
-- **Repository location**: `build/repository/v1.4.3/osx_arm64/gdpdu.duckdb_extension` (platform-specific)
-
-### Loading the Extension
-
-Load the extension in DuckDB:
-
 ```sql
-LOAD 'build/_deps/duckdb-build/extension/gdpdu/gdpdu.duckdb_extension';
+LOAD '/path/to/gdpdu.duckdb_extension';
 ```
 
-Or use the absolute path:
+## Functions
 
-```sql
-LOAD '/full/path/to/navision_gdpdu/build/_deps/duckdb-build/extension/gdpdu/gdpdu.duckdb_extension';
-```
+### `import_gdpdu_navision(path [, column_source])`
 
-## Usage
+Imports all tables from a GDPdU Navision export directory by parsing its `index.xml` and loading the `.txt` data files.
 
-### GDPdU Navision Import
+**Parameters:**
 
-Import all tables from a GDPdU export directory:
+| # | Parameter | Type | Required | Default | Description |
+|---|-----------|------|----------|---------|-------------|
+| 1 | `path` | VARCHAR | Yes | — | Path to the directory containing `index.xml` and `.txt` data files |
+| 2 | `column_source` | VARCHAR | No | `'Name'` | Which XML element to use for column names: `'Name'` (field identifiers) or `'Description'` (German labels) |
 
-```sql
-SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data');
-```
-
-This will:
-1. Parse the `index.xml` file in the specified directory
-2. Create tables in DuckDB based on the schema definitions
-3. Load data from the `.txt` files into the tables
-4. Return a summary of imported tables with row counts and status
-
-### Column Name Source
-
-By default, column names are taken from the `<Name>` element in the XML. You can optionally use the `<Description>` element instead:
-
-```sql
--- Use "Name" field for column names (default)
-SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data');
-SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data', 'Name');
-
--- Use "Description" field for column names (German labels)
-SELECT * FROM import_gdpdu_navision('/path/to/gdpdu/data', 'Description');
-```
-
-### Column Name Conversion
-
-All column names are automatically converted to `snake_case` for consistency:
-
-| Source Type | Original | Converted |
-|-------------|----------|-----------|
-| PascalCase | `EUCountryRegionCode` | `eu_country_region_code` |
-| camelCase | `accountType` | `account_type` |
-| German description | `EU-Laender-/Regionscode` | `eu_laender_regionscode` |
-| With spaces | `Saldo bis Datum` | `saldo_bis_datum` |
-| German umlauts | `Größe` | `grosse` |
-
-German umlauts are transliterated: `ä`→`a`, `ö`→`o`, `ü`→`u`, `ß`→`ss`
-
-### Return Value
-
-The function returns a table with the following columns:
+**Returns:**
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `table_name` | VARCHAR | Name of the imported table |
 | `row_count` | BIGINT | Number of rows imported |
-| `status` | VARCHAR | "OK" or error message |
+| `status` | VARCHAR | `"OK"` or error message |
 
-### Example
+**Example:**
 
 ```sql
--- Import GDPdU data from Navision export
+-- Import using field names (default)
 SELECT * FROM import_gdpdu_navision('/data/gdpdu_export');
+
+-- Import using German description labels
+SELECT * FROM import_gdpdu_navision('/data/gdpdu_export', 'Description');
 
 -- Result:
 -- ┌──────────────┬───────────┬────────┐
@@ -107,120 +47,55 @@ SELECT * FROM import_gdpdu_navision('/data/gdpdu_export');
 -- │ Sachposten   │     45672 │ OK     │
 -- └──────────────┴───────────┴────────┘
 
--- Query the imported data
+-- Query imported data
 SELECT * FROM Sachkonto LIMIT 10;
 ```
 
-## Supported Data Types
+**Notes:**
+- Column names are converted to `snake_case` (e.g. `EUCountryRegionCode` → `eu_country_region_code`)
+- German umlauts are transliterated: `ä`→`a`, `ö`→`o`, `ü`→`u`, `ß`→`ss`
+- Supports German number format (comma decimal, dot grouping) and date format (`DD.MM.YYYY`)
+- Respects `<Range><From>` elements to skip header lines in CSV files
+- Type mapping: `AlphaNumeric` → `VARCHAR`, `Numeric` → `BIGINT`/`DECIMAL`, `Date` → `DATE`
 
-The extension handles the following GDPdU data types:
+---
 
-- **AlphaNumeric** → `VARCHAR`
-- **Numeric** → `BIGINT` (integer) or `DECIMAL(18,n)` (with precision)
-- **Date** → `DATE` (expects German format DD.MM.YYYY)
+### `import_folder(path [, file_type [, options]])`
 
-German number formatting is automatically handled:
-- Decimal separator: `,` (comma)
-- Digit grouping: `.` (dot)
+Imports all files of a given type from a directory into separate DuckDB tables.
 
-### CSV File Handling
+**Parameters:**
 
-The extension automatically handles CSV files with header or metadata lines that need to be skipped. When the XML contains a `<Range><From>` element, the extension will skip the specified number of lines at the beginning of the CSV file.
+| # | Parameter | Type | Required | Default | Description |
+|---|-----------|------|----------|---------|-------------|
+| 1 | `path` | VARCHAR | Yes | — | Path to the folder containing files to import |
+| 2 | `file_type` | VARCHAR | No | `'csv'` | File type to import: `'csv'`, `'parquet'`, `'xlsx'`/`'excel'`, `'json'`, `'tsv'` |
+| 3 | `options` | VARCHAR | No | — | DuckDB read options passed through to the underlying read function (e.g. `'all_varchar=true'`, `'delimiter='';'''`) |
 
-For example, if the XML specifies:
-```xml
-<Range><From>3</From></Range>
-```
-
-The extension will skip the first 2 lines (lines 1 and 2) and start reading data from line 3. This is useful for CSV files that contain:
-- Header rows
-- Metadata or comments
-- Empty lines before the actual data
-
-The extension automatically:
-1. Reads the `<Range><From>` value from the XML
-2. Calculates the number of lines to skip (`From - 1`)
-3. Passes the `skip` parameter to DuckDB's CSV reader
-4. Ensures the correct number of columns are read
-
-### Robust CSV Parsing
-
-The extension uses robust CSV parsing settings to handle various file formats:
-
-- **Auto-detection disabled**: Uses explicit delimiter and column definitions instead of auto-detection
-- **Strict mode disabled**: Allows reading rows that don't strictly comply with CSV standards
-- **Null padding enabled**: Automatically pads missing columns with NULL values
-- **Explicit delimiter**: Uses semicolon (`;`) delimiter as specified in GDPdU format
-
-These settings ensure reliable parsing even when CSV files have:
-- Inconsistent formatting
-- Missing values
-- Extra or missing columns in some rows
-- Encoding issues
-
-## Folder Import
-
-The extension includes a general-purpose `import_folder` function that can import all files of a specified type from a directory into DuckDB tables.
-
-### Basic Usage
-
-Import all files of a specific type from a folder:
-
-```sql
--- Import all CSV files (default)
-SELECT * FROM import_folder('/path/to/folder/');
-
--- Import all Parquet files
-SELECT * FROM import_folder('/path/to/folder/', 'parquet');
-
--- Import all Excel files
-SELECT * FROM import_folder('/path/to/folder/', 'xlsx');
-
--- Import with DuckDB read options (3rd argument)
-SELECT * FROM import_folder('/path/to/folder/', 'xlsx', 'all_varchar=true');
-SELECT * FROM import_folder('/path/to/folder/', 'csv', 'delimiter='';''');
-```
-
-### Supported File Types
-
-The function supports multiple file formats:
-
-| File Type | Extensions | DuckDB Function |
-|-----------|------------|-----------------|
-| `csv` (default) | `.csv`, `.txt` | `read_csv` |
-| `parquet` | `.parquet` | `read_parquet` |
-| `xlsx` / `excel` | `.xlsx`, `.xls` | `read_excel` |
-| `json` | `.json`, `.jsonl` | `read_json` |
-| `tsv` | `.tsv` | `read_csv` (with tab delimiter) |
-
-### Table and Column Naming
-
-- **Table names**: Derived from filenames (without extension), converted to `snake_case`
-  - Example: `MyData.csv` → table `my_data`
-  - Example: `Sales-Report.xlsx` → table `sales_report`
-  
-- **Column names**: Automatically normalized to `snake_case`
-  - Example: `Customer Name` → `customer_name`
-  - Example: `TotalAmount` → `total_amount`
-  - Example: `Order Date` → `order_date`
-
-### Return Value
-
-The function returns a table with import results:
+**Returns:**
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `table_name` | VARCHAR | Normalized table name (snake_case) |
+| `table_name` | VARCHAR | Normalized table name (snake_case, from filename) |
 | `file_name` | VARCHAR | Original filename |
 | `row_count` | BIGINT | Number of rows imported |
 | `column_count` | INTEGER | Number of columns |
-| `status` | VARCHAR | "OK" or error message |
+| `status` | VARCHAR | `"OK"` or error message |
 
-### Example
+**Example:**
 
 ```sql
--- Import all CSV files from a folder
-SELECT * FROM import_folder('/Users/ramonljevo/Downloads/data/');
+-- Import all CSV files (default)
+SELECT * FROM import_folder('/data/reports/');
+
+-- Import all Parquet files
+SELECT * FROM import_folder('/data/reports/', 'parquet');
+
+-- Import Excel files, forcing all columns to text
+SELECT * FROM import_folder('/data/reports/', 'xlsx', 'all_varchar=true');
+
+-- Import CSV with custom delimiter
+SELECT * FROM import_folder('/data/reports/', 'csv', 'delimiter='';''');
 
 -- Result:
 -- ┌──────────────┬──────────────────┬───────────┬──────────────┬────────┐
@@ -228,169 +103,69 @@ SELECT * FROM import_folder('/Users/ramonljevo/Downloads/data/');
 -- ├──────────────┼──────────────────┼───────────┼──────────────┼────────┤
 -- │ sales_data   │ Sales-Data.csv   │      1523 │           12 │ OK     │
 -- │ customers    │ Customers.csv    │       456 │            8 │ OK     │
--- │ products     │ Products.csv     │      2341 │           15 │ OK     │
 -- └──────────────┴──────────────────┴───────────┴──────────────┴────────┘
 
--- Query the imported tables
+-- Query imported tables
 SELECT * FROM sales_data LIMIT 10;
-SELECT * FROM customers WHERE country = 'Germany';
 ```
 
-### Read Options (3rd Argument)
+**Notes:**
+- Table and column names are automatically converted to `snake_case`
+- Excel files automatically retry with `all_varchar=true` if type detection fails on mixed-type columns
+- Existing tables with the same name are dropped before import
+- If one file fails, the remaining files still import
 
-You can pass DuckDB read options as the 3rd argument. These are passed directly to the underlying read function (`read_xlsx`, `read_csv`, `read_parquet`, etc.):
+---
 
-```sql
--- Force all columns as text for Excel files with mixed types
-SELECT * FROM import_folder('/path/', 'xlsx', 'all_varchar=true');
+### `import_xml_data(path [, parser_type])`
 
--- Specify sheet name for Excel
-SELECT * FROM import_folder('/path/', 'xlsx', 'sheet=''Sheet2''');
-
--- Custom CSV delimiter
-SELECT * FROM import_folder('/path/', 'csv', 'delimiter='';''');
-
--- JSON options
-SELECT * FROM import_folder('/path/', 'json', 'format=''array''');
-```
-
-**Excel auto-fallback**: When Excel files fail to read due to mixed-type columns (e.g., a numeric column containing summary text like "Summen"), the extension automatically retries with `all_varchar=true`. This means most Excel files work without any options.
-
-### Features
-
-- **Automatic file detection**: Scans the folder and imports all matching files
-- **Auto-type detection**: Uses DuckDB's native auto-detection for data types
-- **Excel auto-fallback**: Retries with `all_varchar=true` when Excel type detection fails on mixed-type columns
-- **Header support**: Automatically detects and uses headers when present
-- **Error handling**: Continues importing other files even if one fails
-- **Table replacement**: Drops existing tables before importing (idempotent)
-- **Pass-through options**: Optional 3rd argument for DuckDB-native read options
-
-### Use Cases
-
-- Import multiple CSV files from a data export
-- Load all Parquet files from a data lake directory
-- Import Excel reports from a shared folder
-- Bulk import JSON files from an API export
-
-## Generic XML Import
-
-The extension includes a flexible XML import system that can handle different XML formats through a parser factory system.
-
-### Basic Generic Import
-
-Use the `import_xml_data` function to import XML data with configurable parsers:
-
-```sql
--- Use default GDPdU parser
-SELECT * FROM import_xml_data('/path/to/gdpdu/data');
-
--- Explicitly specify parser type
-SELECT * FROM import_xml_data('/path/to/gdpdu/data', 'gdpdu');
-
--- Use generic parser for custom XML formats
-SELECT * FROM import_xml_data('/path/to/xml/data', 'generic');
-```
-
-### Available Parsers
-
-The extension includes two built-in parsers:
-
-1. **`gdpdu`** (default) - Specialized parser for GDPdU Navision format
-   - Optimized for GDPdU XML structure
-   - Handles German number formatting
-   - Supports both "Name" and "Description" column name sources
-   - Automatically handles CSV files with `<Range><From>` elements for skipping header lines
-
-2. **`generic`** - Flexible parser for custom XML formats
-   - Configurable element paths
-   - Customizable type mappings
-   - Supports various XML schemas
-
-### Parser Factory System
-
-The extension uses a factory pattern to manage XML parsers, making it easy to add support for new XML formats:
-
-- **Extensible**: Add new parsers by implementing the `XmlParser` interface
-- **Configurable**: Specify XML element paths, type mappings, and CSV settings
-- **Backward Compatible**: Original `import_gdpdu_navision` function still works
-
-### When to Use Each Function
-
-- **`import_gdpdu_navision`**: Use for standard GDPdU Navision exports (simpler API)
-- **`import_xml_data`**: Use when you need:
-  - Different parser types
-  - Custom XML formats
-  - Future extensibility
-
-### Example: Using Generic Parser
-
-```sql
--- Import with generic parser (for custom XML formats)
-SELECT * FROM import_xml_data('/path/to/custom/xml/data', 'generic');
-```
-
-The generic parser can be configured to handle different XML schemas by specifying:
-- Root element paths
-- Table and column element names
-- Type mappings
-- CSV delimiter and formatting options
-
-## Nextcloud Batch Import
-
-The extension can batch-import GDPdU exports directly from a Nextcloud server via WebDAV. It downloads all `.zip` files from a Nextcloud folder, extracts them, and imports the GDPdU data automatically.
-
-### Basic Usage
-
-```sql
-SELECT * FROM import_gdpdu_nextcloud(
-    'https://cloud.example.com/remote.php/dav/files/user/exports/',
-    'myuser',
-    'mypassword'
-);
-```
+Generic XML import using a configurable parser system.
 
 **Parameters:**
 
-| # | Parameter | Type | Description |
-|---|-----------|------|-------------|
-| 1 | `nextcloud_url` | VARCHAR | Full Nextcloud WebDAV path to the folder containing zip files |
-| 2 | `username` | VARCHAR | Nextcloud username |
-| 3 | `password` | VARCHAR | Nextcloud password |
+| # | Parameter | Type | Required | Default | Description |
+|---|-----------|------|----------|---------|-------------|
+| 1 | `path` | VARCHAR | Yes | — | Path to the directory containing XML and data files |
+| 2 | `parser_type` | VARCHAR | No | `'gdpdu'` | Parser to use: `'gdpdu'` (GDPdU Navision format) or `'generic'` (custom XML formats) |
 
-Authentication uses HTTP Basic Auth. Self-signed SSL certificates are supported.
+**Returns:** Same as `import_gdpdu_navision`.
 
-### How It Works
+**Example:**
 
-1. **List** - Connects to Nextcloud via WebDAV (PROPFIND) and lists all `.zip` files in the folder
-2. **Download** - Downloads each zip file to a temporary directory
-3. **Extract** - Extracts zip contents and locates the `index.xml` file
-4. **Import** - Calls the GDPdU importer on each extracted export
-5. **Rename** - Prefixes all imported table names with a sanitized version of the zip filename to avoid naming collisions
-6. **Cleanup** - Removes all temporary files
+```sql
+-- Default GDPdU parser
+SELECT * FROM import_xml_data('/data/gdpdu_export');
 
-### Table Name Prefixing
+-- Generic parser for custom XML
+SELECT * FROM import_xml_data('/data/custom_xml/', 'generic');
+```
 
-Tables are prefixed with the zip filename to prevent collisions when multiple exports contain tables with the same name:
+---
 
-| Zip File | Original Table | Final Table Name |
-|----------|---------------|-----------------|
-| `Export 2024.zip` | `Buchungen` | `Export_2024_Buchungen` |
-| `Export 2023.zip` | `Buchungen` | `Export_2023_Buchungen` |
+### `import_gdpdu_nextcloud(url, username, password)`
 
-### Return Value
+Batch-imports GDPdU exports from a Nextcloud server via WebDAV. Downloads all `.zip` files from the folder, extracts them, and imports the GDPdU data. Tables are prefixed with the zip filename to avoid collisions.
+
+**Parameters:**
+
+| # | Parameter | Type | Required | Description |
+|---|-----------|------|----------|-------------|
+| 1 | `nextcloud_url` | VARCHAR | Yes | Full Nextcloud WebDAV path (e.g. `https://cloud.example.com/remote.php/dav/files/user/exports/`) |
+| 2 | `username` | VARCHAR | Yes | Nextcloud username |
+| 3 | `password` | VARCHAR | Yes | Nextcloud password |
+
+**Returns:**
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `table_name` | VARCHAR | Prefixed table name |
+| `table_name` | VARCHAR | Prefixed table name (e.g. `Export_2024_Sachkonto`) |
 | `row_count` | BIGINT | Number of rows imported (0 on error) |
-| `status` | VARCHAR | "OK" or error description |
+| `status` | VARCHAR | `"OK"` or error message |
 | `source_zip` | VARCHAR | Original zip filename |
 
-### Example
+**Example:**
 
 ```sql
--- Import all GDPdU exports from Nextcloud
 SELECT * FROM import_gdpdu_nextcloud(
     'https://nextcloud.mycompany.com/remote.php/dav/files/accounting/gdpdu/',
     'accounting_user',
@@ -404,100 +179,41 @@ SELECT * FROM import_gdpdu_nextcloud(
 -- │ Export_2024_Sachkonto     │      1823 │ OK     │ Export 2024.zip  │
 -- │ Export_2024_Sachposten    │     45672 │ OK     │ Export 2024.zip  │
 -- │ Export_2023_Sachkonto     │      1650 │ OK     │ Export 2023.zip  │
--- │ Export_2023_Sachposten    │     38901 │ OK     │ Export 2023.zip  │
 -- └───────────────────────────┴───────────┴────────┴──────────────────┘
 
 -- Query imported tables
 SELECT * FROM Export_2024_Sachposten LIMIT 10;
-
--- Check for errors
-SELECT table_name, status, source_zip
-FROM import_gdpdu_nextcloud('https://cloud.example.com/...', 'user', 'pass')
-WHERE status != 'OK';
 ```
 
-### Error Handling
+**Notes:**
+- Uses HTTP Basic Auth; supports self-signed SSL certificates
+- If one zip fails, the remaining zips still import
 
-The function uses a skip-and-continue pattern for batch resilience. If one zip file fails to download, extract, or import, the error is recorded and processing continues with the remaining files.
+---
 
-| Failure | Behavior |
-|---------|----------|
-| Cannot connect / auth fails | Abort with single error result |
-| One zip fails to download | Skip, continue with next zip |
-| One zip fails to extract | Skip, continue with next zip |
-| One zip fails to import | Skip, continue with next zip |
+### `export_gdpdu(path, table_name)`
 
-### Nextcloud URL Format
+Exports a DuckDB table to GDPdU-compliant format (`index.xml` + semicolon-delimited `.txt` file).
 
-The URL should point to a WebDAV folder path. Common format:
+**Parameters:**
 
-```
-https://<host>/remote.php/dav/files/<username>/<folder>/
-```
+| # | Parameter | Type | Required | Description |
+|---|-----------|------|----------|-------------|
+| 1 | `path` | VARCHAR | Yes | Export directory (created automatically if it doesn't exist) |
+| 2 | `table_name` | VARCHAR | Yes | Name of the DuckDB table to export |
 
-## GDPdU Export
-
-The extension includes an `export_gdpdu` function that exports DuckDB tables back to GDPdU-compliant format for tax audit purposes.
-
-### Basic Usage
-
-Export a table to GDPdU format:
-
-```sql
-SELECT * FROM export_gdpdu('/path/to/export', 'table_name');
-```
-
-This will:
-1. Create the export directory if it doesn't exist
-2. Generate an `index.xml` file with the table schema
-3. Export the table data to `{table_name}.txt` with proper GDPdU formatting
-4. Return export results with status information
-
-### Export Format
-
-The export function creates a GDPdU-compliant export with:
-
-- **index.xml**: XML schema file describing the table structure
-  - Table name and description
-  - Column definitions with types (AlphaNumeric, Numeric, Date)
-  - Data type precision for numeric columns
-  - UTF-8 encoding indicator
-  - German number format settings (comma decimal, dot thousands)
-
-- **{table_name}.txt**: Data file with:
-  - Semicolon-delimited format (`;`)
-  - No header row
-  - German number format: comma as decimal separator (e.g., `23,50`)
-  - German date format: `DD.MM.YYYY` (e.g., `24.01.2025`)
-  - UTF-8 encoding
-
-### Type Inference
-
-The export function automatically infers GDPdU types from DuckDB column types:
-
-| DuckDB Type | GDPdU Type | Notes |
-|-------------|------------|-------|
-| `VARCHAR`, `TEXT`, `CHAR` | `AlphaNumeric` | Text data |
-| `BIGINT`, `INTEGER`, `INT` | `Numeric` | Integer (precision=0) |
-| `DECIMAL`, `NUMERIC` | `Numeric` | Decimal with precision |
-| `DOUBLE`, `FLOAT`, `REAL` | `Numeric` | Floating point (precision=2) |
-| `DATE` | `Date` | Date values |
-
-### Return Value
-
-The function returns a table with the following columns:
+**Returns:**
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `table_name` | VARCHAR | Name of the exported table |
 | `file_path` | VARCHAR | Export directory path |
 | `row_count` | BIGINT | Number of rows exported |
-| `status` | VARCHAR | "OK" or error message |
+| `status` | VARCHAR | `"OK"` or error message |
 
-### Example
+**Example:**
 
 ```sql
--- Export a table to GDPdU format
 SELECT * FROM export_gdpdu('/data/gdpdu_export', 'Sachkonto');
 
 -- Result:
@@ -507,56 +223,14 @@ SELECT * FROM export_gdpdu('/data/gdpdu_export', 'Sachkonto');
 -- │ Sachkonto    │ /data/gdpdu_export   │      1823 │ OK     │
 -- └──────────────┴──────────────────────┴───────────┴────────┘
 
--- The export creates:
--- /data/gdpdu_export/index.xml
--- /data/gdpdu_export/Sachkonto.txt
+-- Creates: /data/gdpdu_export/index.xml
+--          /data/gdpdu_export/Sachkonto.txt
 ```
 
-### Use Cases
-
-- **Tax Audit Compliance**: Export processed data back to GDPdU format for tax authorities
-- **Data Archiving**: Create GDPdU-compliant archives of financial data
-- **Data Exchange**: Export data in standard format for sharing with auditors
-- **Backup**: Create GDPdU-formatted backups of important tables
-
-### Notes
-
-- The export directory will be created automatically if it doesn't exist
-- Existing files in the export directory will be overwritten
-- Column names are preserved as-is (not converted from snake_case)
-- Primary keys are not detected automatically (all columns exported as VariableColumn)
-- The export maintains German number and date formatting standards
-
-## Architecture
-
-### Parser System
-
-The extension implements a flexible parser architecture:
-
-```
-XmlParser (interface)
-├── GdpduXmlParser (GDPdU-specific)
-└── GenericXmlParser (configurable)
-```
-
-New parsers can be added by:
-1. Implementing the `XmlParser` interface
-2. Registering with `XmlParserFactory`
-3. Using via `import_xml_data(path, 'parser_type')`
-
-### Extension Functions
-
-| Function | Parser | Use Case |
-|----------|--------|----------|
-| `import_gdpdu_navision(path)` | GDPdU | Standard Navision exports |
-| `import_gdpdu_navision(path, field)` | GDPdU | Navision with column name source |
-| `import_xml_data(path)` | GDPdU (default) | Generic import (GDPdU format) |
-| `import_xml_data(path, parser)` | Configurable | Custom XML formats |
-| `import_folder(path)` | N/A | Import all CSV files from folder |
-| `import_folder(path, file_type)` | N/A | Import all files of specified type from folder |
-| `import_folder(path, file_type, options)` | N/A | Import with DuckDB read options passed through |
-| `export_gdpdu(path, table_name)` | N/A | Export table to GDPdU format |
-| `import_gdpdu_nextcloud(url, user, pass)` | GDPdU | Batch import GDPdU zips from Nextcloud via WebDAV |
+**Notes:**
+- Output uses German formatting: comma decimal separator, `DD.MM.YYYY` dates, semicolon delimiter
+- Type mapping: `VARCHAR`/`TEXT` → `AlphaNumeric`, `BIGINT`/`INTEGER` → `Numeric` (precision=0), `DECIMAL` → `Numeric` (with precision), `DOUBLE`/`FLOAT` → `Numeric` (precision=2), `DATE` → `Date`
+- Existing files are overwritten
 
 ## License
 
