@@ -36,6 +36,34 @@ static std::string join_path(const std::string& dir, const std::string& file) {
     return norm_dir + "/" + file;
 }
 
+// Normalize a column name to snake_case (lowercase, replace non-alphanumeric with underscores)
+static std::string normalize_column_name(const std::string& name) {
+    std::string result;
+    result.reserve(name.size());
+    bool prev_underscore = true;  // prevent leading underscore
+
+    for (size_t i = 0; i < name.size(); ++i) {
+        char c = name[i];
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            result += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            prev_underscore = false;
+        } else {
+            // Replace non-alphanumeric with underscore, but collapse consecutive
+            if (!prev_underscore && !result.empty()) {
+                result += '_';
+                prev_underscore = true;
+            }
+        }
+    }
+
+    // Remove trailing underscore
+    while (!result.empty() && result.back() == '_') {
+        result.pop_back();
+    }
+
+    return result;
+}
+
 // Escape single quotes for SQL string literals
 static std::string escape_sql(const std::string& value) {
     std::string result;
@@ -297,7 +325,7 @@ static std::vector<std::string> parse_buchungsstapel_columns(const std::string& 
         while (!col.empty() && (col.front() == ' ' || col.front() == '\t')) {
             col.erase(col.begin());
         }
-        columns.push_back(col);
+        columns.push_back(normalize_column_name(col));
     }
 
     return columns;
@@ -307,18 +335,18 @@ static std::vector<std::string> parse_buchungsstapel_columns(const std::string& 
 // Section 5: SQL builders
 // ============================================================================
 
-// Returns SQL type based on column name
+// Returns SQL type based on normalized column name
 static std::string get_column_sql_type(const std::string& col_name) {
-    if (col_name == "Belegdatum") {
+    if (col_name == "belegdatum") {
         return "DATE";
     }
-    if (col_name == "Umsatz (ohne Soll/Haben-Kz)") {
+    if (col_name == "umsatz_ohne_soll_haben_kz") {
         return "DECIMAL(18,2)";
     }
-    if (col_name == "Basis-Umsatz") {
+    if (col_name == "basis_umsatz") {
         return "DECIMAL(18,2)";
     }
-    if (col_name == "Kurs") {
+    if (col_name == "kurs") {
         return "DECIMAL(18,6)";
     }
     return "VARCHAR";
@@ -328,7 +356,7 @@ static std::string get_column_sql_type(const std::string& col_name) {
 static std::string build_column_select_expr(const std::string& col_name, size_t col_index, int year) {
     std::string col_ref = "column" + std::to_string(col_index);
 
-    if (col_name == "Belegdatum") {
+    if (col_name == "belegdatum") {
         // Belegdatum has compact DDMM format (e.g. "2001" = 20th Jan, "103" = 1st Mar)
         // Extract month from last 2 chars, day from remaining leading chars
         std::ostringstream ss;
@@ -340,7 +368,7 @@ static std::string build_column_select_expr(const std::string& col_name, size_t 
         return ss.str();
     }
 
-    if (col_name == "Umsatz (ohne Soll/Haben-Kz)" || col_name == "Basis-Umsatz") {
+    if (col_name == "umsatz_ohne_soll_haben_kz" || col_name == "basis_umsatz") {
         // German decimal format: dot = thousands separator, comma = decimal separator
         std::ostringstream ss;
         ss << "CASE WHEN " << col_ref << " IS NOT NULL AND TRIM(" << col_ref << ") != '' THEN "
@@ -349,7 +377,7 @@ static std::string build_column_select_expr(const std::string& col_name, size_t 
         return ss.str();
     }
 
-    if (col_name == "Kurs") {
+    if (col_name == "kurs") {
         // Same German decimal format but with higher precision
         std::ostringstream ss;
         ss << "CASE WHEN " << col_ref << " IS NOT NULL AND TRIM(" << col_ref << ") != '' THEN "
@@ -504,10 +532,10 @@ std::vector<BuchungsstapelImportResult> import_buchungsstapel(
 
         // Try encoding fallback loop
         std::vector<std::string> encodings_to_try = {
+            "CP1250",
             "UTF-8",
             "ISO-8859-1",
             "Windows-1252",
-            "CP1252",
             "CP850"
         };
 
@@ -587,11 +615,6 @@ std::vector<BuchungsstapelImportResult> import_buchungsstapel(
         } else {
             result.row_count = 0;
             result.status = "Load failed: " + load_error;
-        }
-
-        // Drop table if 0 rows
-        if (result.row_count == 0) {
-            conn.Query("DROP TABLE IF EXISTS \"" + table_name + "\"");
         }
 
         results.push_back(result);

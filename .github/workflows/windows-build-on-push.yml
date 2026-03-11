@@ -106,9 +106,19 @@ jobs:
             nm -g "$EXTENSION_FILE" | grep -i "gdpdu_duckdb_cpp_init" || echo "⚠️  Warning: Entrypoint symbol not found"
           fi
 
-          # Check DLL dependencies
+          # Check DLL dependencies and fail if OpenSSL DLLs are present (must be statically linked)
           echo "=== DLL Dependencies ==="
-          dumpbin //dependents "$EXTENSION_FILE" || echo "dumpbin not available"
+          DUMPBIN_EXE=$(find "/c/Program Files/Microsoft Visual Studio" -name "dumpbin.exe" -path "*/Hostx64/x64/*" 2>/dev/null | head -1)
+          if [ -n "$DUMPBIN_EXE" ]; then
+            "$DUMPBIN_EXE" /dependents "$EXTENSION_FILE"
+            if "$DUMPBIN_EXE" /dependents "$EXTENSION_FILE" | grep -qi "libssl\|libcrypto"; then
+              echo "❌ FATAL: Extension has dynamic OpenSSL dependency! OpenSSL must be statically linked."
+              exit 1
+            fi
+            echo "✅ No dynamic OpenSSL dependencies detected"
+          else
+            echo "⚠️  dumpbin not found, skipping DLL dependency check"
+          fi
           echo "=== Extension file size ==="
           ls -lh "$EXTENSION_FILE"
 
